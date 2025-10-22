@@ -3,15 +3,15 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Sheets NL Dashboard</title>
+  <title>Music industry </title>
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
   <div class="container">
-    <h1>Google Sheets Natural Language Dashboard</h1>
+    <h1>Music industry database 2025</h1>
 
     <form method="post" action="/query" class="query-form">
-      <label>Select Worksheet to Search</label>
+      <label>Select Worksheet </label>
       <select name="worksheet" required>
         <option value="">Choose a worksheet...</option>
         {% for name in worksheet_names %}
@@ -19,7 +19,7 @@
         {% endfor %}
       </select>
 
-      <label>Ask a question (e.g., "Show rows where Status is Open last 7 days")</label>
+      <label>Ask me anything (eg. Show me a table of Italian clubs, promoters or festivals.</label>
       <textarea name="query" rows="3" placeholder="Type your question here..." required>{{ query_text or '' }}</textarea>
 
       <div class="actions">
@@ -56,7 +56,7 @@
 
     <section class="add-contact">
       <h2>Add New Contact</h2>
-      <p>Enter contact info in natural language. Example: "Add a new contact: John Smith, DJ at XYZ Club in Berlin, LinkedIn https://..., Instagram @johnbeats, email john@xyz.com"</p>
+      <p>Add as many details below so that these details will appear in future searches. You can add their Instagram link, LinkedIn, role etc. Always ensure you add an email.</p>
       <textarea id="contactText" rows="3" placeholder="Type contact details..."></textarea>
       <div class="actions">
         <button id="addContactBtn" type="button">Add Contact</button>
