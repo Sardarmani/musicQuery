@@ -1,0 +1,21 @@
+body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; margin: 0; padding: 0; background: #f7f7fb; color: #222; }
+.container { max-width: 1000px; margin: 32px auto; background: #fff; padding: 24px; border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.08); }
+h1 { margin-top: 0; font-size: 22px; }
+label { display: block; margin: 12px 0 6px; font-weight: 600; }
+select, textarea, input[type=text] { width: 100%; padding: 10px 12px; border: 1px solid #ddd; border-radius: 8px; background: #fafafa; }
+.actions { margin-top: 12px; }
+button { background: #2563eb; color: white; border: 0; padding: 10px 16px; border-radius: 8px; cursor: pointer; }
+button:hover { background: #1e4fd6; }
+.results { margin-top: 24px; }
+.table-wrapper { overflow: auto; border: 1px solid #eee; border-radius: 8px; }
+.result-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.result-table th, .result-table td { padding: 8px 10px; border-bottom: 1px solid #eee; }
+.result-table tr:nth-child(even) { background: #fafafa; }
+.divider { height: 1px; background: #eee; margin: 24px 0; }
+.add-contact h2 { margin: 0 0 8px; font-size: 18px; }
+.msg { margin-top: 10px; padding: 8px 10px; border-radius: 8px; font-size: 14px; }
+.msg.info { background: #eef2ff; color: #1e40af; }
+.msg.success { background: #ecfdf5; color: #065f46; }
+.msg.error { background: #fef2f2; color: #991b1b; }
+.no-results { margin-top: 20px; padding: 16px; background: #fef3c7; border: 1px solid #f59e0b; border-radius: 8px; }
+.no-results-message { margin: 0; color: #92400e; font-weight: 500; }

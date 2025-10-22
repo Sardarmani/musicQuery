@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sheets NL Dashboard</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="container">
+    <h1>Google Sheets Natural Language Dashboard</h1>
+
+    <form method="post" action="/query" class="query-form">
+      <label>Select Worksheet to Search</label>
+      <select name="worksheet" required>
+        <option value="">Choose a worksheet...</option>
+        {% for name in worksheet_names %}
+          <option value="{{ name }}" {% if selected_worksheet == name %}selected{% endif %}>{{ name }}</option>
+        {% endfor %}
+      </select>
+
+      <label>Ask a question (e.g., "Show rows where Status is Open last 7 days")</label>
+      <textarea name="query" rows="3" placeholder="Type your question here..." required>{{ query_text or '' }}</textarea>
+
+      <div class="actions">
+        <button type="submit">Search</button>
+      </div>
+    </form>
+
+    {% if no_results_message %}
+      <div class="no-results">
+        <p class="no-results-message">{{ no_results_message }}</p>
+      </div>
+    {% endif %}
+
+    {% if table_html %}
+      <div class="results">
+        <h2>Results</h2>
+        <div class="table-wrapper">
+          {{ table_html | safe }}
+        </div>
+        <form method="post" action="/download">
+          <input type="hidden" name="query" value="{{ query_text }}">
+          <input type="hidden" name="worksheet" value="{{ selected_worksheet or '' }}">
+          <button type="submit">Download CSV</button>
+        </form>
+        <form method="post" action="/download-xlsx">
+          <input type="hidden" name="query" value="{{ query_text }}">
+          <input type="hidden" name="worksheet" value="{{ selected_worksheet or '' }}">
+          <button type="submit">Download Excel</button>
+        </form>
+      </div>
+    {% endif %}
+
+    <div class="divider"></div>
+
+    <section class="add-contact">
+      <h2>Add New Contact</h2>
+      <p>Enter contact info in natural language. Example: "Add a new contact: John Smith, DJ at XYZ Club in Berlin, LinkedIn https://..., Instagram @johnbeats, email john@xyz.com"</p>
+      <textarea id="contactText" rows="3" placeholder="Type contact details..."></textarea>
+      <div class="actions">
+        <button id="addContactBtn" type="button">Add Contact</button>
+      </div>
+      <div id="addContactMsg" class="msg" role="status" aria-live="polite"></div>
+    </section>
+  </div>
+
+  <script>
+    const btn = document.getElementById('addContactBtn');
+    const input = document.getElementById('contactText');
+    const msg = document.getElementById('addContactMsg');
+
+    async function addContact() {
+      const text = (input.value || '').trim();
+      if (!text) {
+        msg.textContent = 'Please enter contact details.';
+        msg.className = 'msg error';
+        return;
+      }
+      msg.textContent = 'Adding contact...';
+      msg.className = 'msg info';
+      try {
+        const res = await fetch('/add_contact', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query: text })
+        });
+        if (!res.ok) {
+          const t = await res.text();
+          throw new Error(t || 'Request failed');
+        }
+        const data = await res.json();
+        msg.textContent = data.message || 'Contact added successfully!';
+        msg.className = 'msg success';
+        input.value = '';
+      } catch (err) {
+        msg.textContent = 'Error: ' + (err.message || 'Failed to add contact');
+        msg.className = 'msg error';
+      }
+    }
+
+    btn?.addEventListener('click', addContact);
+  </script>
+</body>
+</html>
