@@ -43,8 +43,8 @@ class DataStructureAnalyzer:
         if df is None or df.empty:
             return {}
         
-        # Get more sample data (first 10 rows) for better GPT analysis
-        sample_data = df.head(10).to_dict('records')
+        # Get exactly 6 sample rows for GPT analysis
+        sample_data = df.head(6).to_dict('records')
         
         # Analyze column types and content
         column_analysis = {}
@@ -118,11 +118,11 @@ class DataStructureAnalyzer:
     
     def get_gpt_query_analysis(self, user_query: str, data_structure: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Use GPT to analyze the user query against the data structure.
+        Simple, direct approach: Send sample rows + query to GPT-5 and ask how to extract data.
         
         Args:
             user_query: User's search query
-            data_structure: Analyzed data structure
+            data_structure: Analyzed data structure with sample data
             
         Returns:
             Dictionary with GPT analysis and search recommendations
@@ -131,87 +131,94 @@ class DataStructureAnalyzer:
             return self._fallback_analysis(user_query, data_structure)
         
         try:
-            # Prepare comprehensive data structure summary for GPT
-            columns_info = []
-            for col, info in data_structure.get('columns', {}).items():
-                columns_info.append({
-                    'name': col,
-                    'type': info['type'],
-                    'sample_values': info['sample_values'],  # Show all sample values
-                    'completeness': info['completeness']
-                })
+            # Get the sample data (first 5-6 rows)
+            sample_data = data_structure.get('sample_data', [])[:6]  # Take first 6 rows
             
-            system_prompt = """You are an expert database analyst with deep understanding of data structures and user queries.
+            if not sample_data:
+                return self._fallback_analysis(user_query, data_structure)
+            
+            system_prompt = """You are a data extraction expert. I will give you sample data from a database and a user query. 
 
-CRITICAL REQUIREMENTS:
-1. Analyze the EXACT data structure provided - look at column names, sample values, and data types
-2. Understand the user's query intent precisely - what specific information are they looking for?
-3. Create PRECISE filters that will find EXACT matches in the data
-4. Always return FULL ROWS with all columns - never filter columns
+Your job is to tell me EXACTLY how to find the data the user wants.
 
-ANALYSIS PROCESS:
-1. Examine each column name and its sample values to understand what data it contains
-2. Identify which columns are relevant for the user's query
-3. Create specific filters using the EXACT column names and values from the sample data
-4. Use appropriate operators (icontains, eq, contains) based on the data type
+Look at the sample data and the user query, then tell me:
+1. Which column(s) to search in
+2. What to search for
+3. How to search (exact match, contains, etc.)
 
-FILTER EXAMPLES:
-- For location queries: Use columns that contain country/city names
-- For time queries: Use columns that contain month/date information  
-- For event queries: Use columns that contain event/festival/club names
-- For contact queries: Use columns that contain names/emails/contacts
+Return ONLY a JSON response with this format:
+{
+  "search_column": "exact_column_name_from_sample_data",
+  "search_value": "what_to_search_for",
+  "search_type": "exact" or "contains"
+}
 
-Return JSON with:
-- intent: Clear description of what user wants
-- relevant_columns: Exact column names from the data structure
-- search_strategy: "enhanced" for best results
-- filters: Array of {column: "exact_column_name", operator: "icontains/eq", value: "search_term"}
-- return_full_rows: true
-- confidence: 0.9+ for high accuracy
+Be very specific and use the EXACT column names from the sample data."""
 
-Be extremely precise with column names and values from the actual data structure."""
-
-            user_prompt = f"""
-DATA STRUCTURE ANALYSIS:
-Worksheet: {data_structure.get('worksheet_name', 'Unknown')}
-Total Rows: {data_structure.get('total_rows', 0)}
-Total Columns: {data_structure.get('total_columns', 0)}
-
-COLUMN DETAILS:
-{json.dumps(columns_info, indent=2)}
-
-SAMPLE DATA (First 10 rows - examine these carefully):
-{json.dumps(data_structure.get('sample_data', []), indent=2)}
+            user_prompt = f"""SAMPLE DATA (first 6 rows from the database):
+{json.dumps(sample_data, indent=2)}
 
 USER QUERY: "{user_query}"
 
-TASK: Analyze the user query against the EXACT data structure above. 
-1. Look at the column names and sample values to understand what each column contains
-2. Identify which columns are relevant for the user's query
-3. Create precise filters using the EXACT column names from the data structure
-4. Use appropriate search terms based on the user's query
+From this sample data and user query, tell me EXACTLY how to extract the data the user wants.
+Look at the sample data to see what columns exist and what data looks like.
+Then tell me which column to search and what to search for.
 
-IMPORTANT: Use the EXACT column names from the data structure. Do not guess or approximate.
-Focus on finding rows that EXACTLY match what the user is looking for.
-
-Return a JSON response with precise filters."""
+Return ONLY the JSON response."""
 
             response = self.client.chat.completions.create(
-                model="gpt-5-pro",  # Using GPT-5 Pro - the most advanced model for maximum accuracy
+                model="gpt-5",  # Using GPT-5 as requested
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
                 ],
-                temperature=0.01,  # Ultra-low temperature for maximum consistency and accuracy
-                max_tokens=3000  # More tokens for comprehensive analysis
+                temperature=0.1,
+                max_tokens=500
             )
             
             result = response.choices[0].message.content
-            return self._parse_gpt_response(result)
+            return self._parse_simple_gpt_response(result)
             
         except Exception as e:
             logger.error(f"GPT analysis failed: {e}")
             return self._fallback_analysis(user_query, data_structure)
+    
+    def _parse_simple_gpt_response(self, response: str) -> Dict[str, Any]:
+        """Parse simple GPT response into structured data."""
+        try:
+            # Extract JSON from response
+            import re
+            json_match = re.search(r'\{.*\}', response, re.DOTALL)
+            if json_match:
+                json_str = json_match.group(0)
+                gpt_result = json.loads(json_str)
+                
+                # Convert simple response to our format
+                search_column = gpt_result.get('search_column', '')
+                search_value = gpt_result.get('search_value', '')
+                search_type = gpt_result.get('search_type', 'contains')
+                
+                # Create filter based on GPT response
+                filters = []
+                if search_column and search_value:
+                    operator = 'eq' if search_type == 'exact' else 'icontains'
+                    filters.append({
+                        'column': search_column,
+                        'operator': operator,
+                        'value': search_value
+                    })
+                
+                return {
+                    'intent': f'Search for {search_value} in {search_column}',
+                    'search_strategy': 'simple',
+                    'filters': filters,
+                    'return_full_rows': True,
+                    'confidence': 0.9
+                }
+            else:
+                return self._fallback_analysis("", {})
+        except Exception:
+            return self._fallback_analysis("", {})
     
     def _parse_gpt_response(self, response: str) -> Dict[str, Any]:
         """Parse GPT response into structured data."""
