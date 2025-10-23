@@ -180,7 +180,6 @@ Return ONLY the JSON response."""
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
                 ],
-                temperature=0.1,
                 max_completion_tokens=500
             )
             
