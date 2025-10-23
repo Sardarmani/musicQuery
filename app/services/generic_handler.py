@@ -259,7 +259,7 @@ class GenericWorksheetHandler:
         if not query_terms:
             return df
         
-        # Create search mask
+        # Create search mask - start with False for all rows
         mask = pd.Series([False] * len(df), index=df.index)
         
         # Search in all string columns
@@ -268,20 +268,24 @@ class GenericWorksheetHandler:
                 col_mask = pd.Series([False] * len(df), index=df.index)
                 
                 for term in query_terms:
-                    # Exact match
-                    exact_match = df[col].astype(str).str.lower().str.contains(re.escape(term), na=False)
+                    # Exact match (case-insensitive)
+                    exact_match = df[col].astype(str).str.lower().str.contains(re.escape(term), na=False, regex=True)
                     col_mask |= exact_match
                     
-                    # Fuzzy match for better results
-                    fuzzy_match = df[col].astype(str).apply(
-                        lambda x: any(SequenceMatcher(None, term, word.lower()).ratio() > 0.7 
-                                    for word in str(x).split() if word.strip())
-                    )
-                    col_mask |= fuzzy_match
+                    # Fuzzy match for better results (only if exact match fails)
+                    if not col_mask.any():  # Only apply fuzzy if no exact matches
+                        fuzzy_match = df[col].astype(str).apply(
+                            lambda x: any(SequenceMatcher(None, term, word.lower()).ratio() > 0.7 
+                                        for word in str(x).split() if word.strip())
+                        )
+                        col_mask |= fuzzy_match
                 
-                mask |= col_mask
+                # Only add to main mask if this column has matches
+                if col_mask.any():
+                    mask |= col_mask
         
-        return df[mask]
+        # Return only rows that have at least one match
+        return df[mask] if mask.any() else pd.DataFrame()
     
     def get_worksheet_summary(self, df: pd.DataFrame, worksheet_name: str) -> Dict[str, Any]:
         """

@@ -58,7 +58,35 @@ class GoogleSheetsClient:
                     raise gspread.exceptions.WorksheetNotFound(f"Worksheet '{worksheet}' not found")
         else:
             ws = sh.sheet1
-        values = ws.get_all_values()
+        
+        try:
+            values = ws.get_all_values()
+        except Exception as e:
+            if "header row in the worksheet is not unique" in str(e).lower():
+                # Handle duplicate headers by getting raw data and processing manually
+                try:
+                    all_values = ws.get_all_values()
+                    if not all_values:
+                        return []
+                    
+                    # Get the header row and make headers unique
+                    headers = all_values[0]
+                    unique_headers = []
+                    header_counts = {}
+                    for header in headers:
+                        if header in header_counts:
+                            header_counts[header] += 1
+                            unique_headers.append(f"{header}_{header_counts[header]}")
+                        else:
+                            header_counts[header] = 0
+                            unique_headers.append(header)
+                    
+                    return unique_headers
+                except Exception as inner_e:
+                    raise Exception(f"Failed to read worksheet headers: {str(inner_e)}")
+            else:
+                raise e
+        
         return values[0] if values else []
 
     def read_dataframe(self, sheet_id: str, worksheet: Optional[str]) -> pd.DataFrame:
@@ -77,7 +105,41 @@ class GoogleSheetsClient:
                     raise gspread.exceptions.WorksheetNotFound(f"Worksheet '{worksheet}' not found")
         else:
             ws = sh.sheet1
-        data = ws.get_all_records()
+        
+        try:
+            # Try to get all records normally first
+            data = ws.get_all_records()
+        except Exception as e:
+            if "header row in the worksheet is not unique" in str(e).lower():
+                # Handle duplicate headers by getting raw data and processing manually
+                try:
+                    all_values = ws.get_all_values()
+                    if not all_values:
+                        return pd.DataFrame()
+                    
+                    # Get the header row
+                    headers = all_values[0]
+                    
+                    # Make headers unique by appending numbers to duplicates
+                    unique_headers = []
+                    header_counts = {}
+                    for header in headers:
+                        if header in header_counts:
+                            header_counts[header] += 1
+                            unique_headers.append(f"{header}_{header_counts[header]}")
+                        else:
+                            header_counts[header] = 0
+                            unique_headers.append(header)
+                    
+                    # Create DataFrame with unique headers
+                    data_rows = all_values[1:]  # Skip header row
+                    df = pd.DataFrame(data_rows, columns=unique_headers)
+                    return df
+                except Exception as inner_e:
+                    raise Exception(f"Failed to read worksheet data: {str(inner_e)}")
+            else:
+                raise e
+        
         if not data:
             return pd.DataFrame()
         df = pd.DataFrame(data)
