@@ -181,7 +181,7 @@ Return ONLY the JSON response."""
                     {"role": "user", "content": user_prompt}
                 ],
                 temperature=0.1,
-                max_tokens=500
+                max_completion_tokens=500
             )
             
             result = response.choices[0].message.content
