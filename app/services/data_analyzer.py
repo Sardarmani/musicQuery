@@ -141,52 +141,69 @@ class DataStructureAnalyzer:
                     'completeness': info['completeness']
                 })
             
-            system_prompt = """You are an expert at analyzing data structures and understanding user queries for database searches.
+            system_prompt = """You are an expert database analyst with deep understanding of data structures and user queries.
 
-Your task is to:
-1. Analyze the user's query to understand what they're looking for
-2. Identify which columns in the data structure are relevant for filtering
-3. Determine the best search strategy
-4. Provide specific filters to find matching rows
+CRITICAL REQUIREMENTS:
+1. Analyze the EXACT data structure provided - look at column names, sample values, and data types
+2. Understand the user's query intent precisely - what specific information are they looking for?
+3. Create PRECISE filters that will find EXACT matches in the data
+4. Always return FULL ROWS with all columns - never filter columns
 
-IMPORTANT: Always return FULL ROWS, not just specific columns. The user wants complete matching records.
+ANALYSIS PROCESS:
+1. Examine each column name and its sample values to understand what data it contains
+2. Identify which columns are relevant for the user's query
+3. Create specific filters using the EXACT column names and values from the sample data
+4. Use appropriate operators (icontains, eq, contains) based on the data type
 
-Return a JSON response with:
-- intent: What the user is looking for
-- relevant_columns: List of column names that are relevant for filtering
-- search_strategy: How to search (enhanced, fuzzy, or structured)
-- filters: List of filters to apply (column, operator, value)
-- return_full_rows: true (always return complete rows)
-- confidence: How confident you are (0-1)
+FILTER EXAMPLES:
+- For location queries: Use columns that contain country/city names
+- For time queries: Use columns that contain month/date information  
+- For event queries: Use columns that contain event/festival/club names
+- For contact queries: Use columns that contain names/emails/contacts
 
-Be precise and focus on finding the most relevant rows for the user's query."""
+Return JSON with:
+- intent: Clear description of what user wants
+- relevant_columns: Exact column names from the data structure
+- search_strategy: "enhanced" for best results
+- filters: Array of {column: "exact_column_name", operator: "icontains/eq", value: "search_term"}
+- return_full_rows: true
+- confidence: 0.9+ for high accuracy
+
+Be extremely precise with column names and values from the actual data structure."""
 
             user_prompt = f"""
-Data Structure Analysis:
-- Worksheet: {data_structure.get('worksheet_name', 'Unknown')}
-- Total Rows: {data_structure.get('total_rows', 0)}
-- Total Columns: {data_structure.get('total_columns', 0)}
+DATA STRUCTURE ANALYSIS:
+Worksheet: {data_structure.get('worksheet_name', 'Unknown')}
+Total Rows: {data_structure.get('total_rows', 0)}
+Total Columns: {data_structure.get('total_columns', 0)}
 
-Columns with Sample Data:
+COLUMN DETAILS:
 {json.dumps(columns_info, indent=2)}
 
-Sample Data (first 10 rows):
+SAMPLE DATA (First 10 rows - examine these carefully):
 {json.dumps(data_structure.get('sample_data', []), indent=2)}
 
-User Query: "{user_query}"
+USER QUERY: "{user_query}"
 
-Analyze this query against the actual data structure and provide search recommendations.
-Focus on finding rows that match the user's intent.
-"""
+TASK: Analyze the user query against the EXACT data structure above. 
+1. Look at the column names and sample values to understand what each column contains
+2. Identify which columns are relevant for the user's query
+3. Create precise filters using the EXACT column names from the data structure
+4. Use appropriate search terms based on the user's query
+
+IMPORTANT: Use the EXACT column names from the data structure. Do not guess or approximate.
+Focus on finding rows that EXACTLY match what the user is looking for.
+
+Return a JSON response with precise filters."""
 
             response = self.client.chat.completions.create(
-                model="gpt-4o-mini",
+                model="gpt-5-pro",  # Using GPT-5 Pro - the most advanced model for maximum accuracy
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
                 ],
-                temperature=0.1,
-                max_tokens=1500
+                temperature=0.01,  # Ultra-low temperature for maximum consistency and accuracy
+                max_tokens=3000  # More tokens for comprehensive analysis
             )
             
             result = response.choices[0].message.content
@@ -210,55 +227,80 @@ Focus on finding rows that match the user's intent.
             return self._fallback_analysis("", {})
     
     def _fallback_analysis(self, user_query: str, data_structure: Dict[str, Any]) -> Dict[str, Any]:
-        """Fallback analysis when GPT is not available."""
+        """Enhanced fallback analysis when GPT is not available."""
         query_lower = user_query.lower()
         
-        # Simple keyword matching
+        # More comprehensive keyword matching
         relevant_columns = []
         filters = []
         
-        # Look for location terms
-        if any(term in query_lower for term in ['italian', 'italy', 'french', 'france', 'german', 'germany']):
+        # Look for location terms with better matching
+        location_terms = ['italian', 'italy', 'french', 'france', 'german', 'germany', 'spanish', 'spain', 'uk', 'usa', 'united states', 'united kingdom']
+        if any(term in query_lower for term in location_terms):
             for col, info in data_structure.get('columns', {}).items():
-                if info['type'] in ['location', 'city', 'country']:
+                col_lower = col.lower()
+                # Look for location-related columns
+                if any(loc_term in col_lower for loc_term in ['country', 'city', 'location', 'place', 'nation']):
                     relevant_columns.append(col)
+                    # Create specific filters based on query terms
                     if 'italian' in query_lower or 'italy' in query_lower:
                         filters.append({
                             'column': col,
                             'operator': 'icontains',
                             'value': 'italy'
                         })
-        
-        # Look for time terms
-        if any(term in query_lower for term in ['august', 'july', 'june', 'september']):
-            for col, info in data_structure.get('columns', {}).items():
-                if info['type'] == 'time':
-                    relevant_columns.append(col)
-                    if 'august' in query_lower:
+                    elif 'french' in query_lower or 'france' in query_lower:
                         filters.append({
                             'column': col,
                             'operator': 'icontains',
-                            'value': 'august'
+                            'value': 'france'
+                        })
+                    elif 'german' in query_lower or 'germany' in query_lower:
+                        filters.append({
+                            'column': col,
+                            'operator': 'icontains',
+                            'value': 'germany'
                         })
         
-        # Look for event terms
-        if 'event' in query_lower:
+        # Look for time terms with better matching
+        time_terms = ['august', 'july', 'june', 'september', 'october', 'november', 'december', 'january', 'february', 'march', 'april', 'may']
+        if any(term in query_lower for term in time_terms):
             for col, info in data_structure.get('columns', {}).items():
-                if info['type'] == 'event':
+                col_lower = col.lower()
+                # Look for time-related columns
+                if any(time_term in col_lower for time_term in ['month', 'time', 'date', 'period', 'when']):
+                    relevant_columns.append(col)
+                    # Create specific filters for each month
+                    for month in time_terms:
+                        if month in query_lower:
+                            filters.append({
+                                'column': col,
+                                'operator': 'icontains',
+                                'value': month
+                            })
+                            break
+        
+        # Look for event terms with better matching
+        event_terms = ['event', 'events', 'festival', 'festivals', 'club', 'clubs', 'promoter', 'promoters']
+        if any(term in query_lower for term in event_terms):
+            for col, info in data_structure.get('columns', {}).items():
+                col_lower = col.lower()
+                # Look for event-related columns
+                if any(event_term in col_lower for event_term in ['event', 'festival', 'club', 'promoter', 'venue', 'name']):
                     relevant_columns.append(col)
         
         return {
-            'intent': 'Search for events',
+            'intent': f'Search for {user_query}',
             'relevant_columns': relevant_columns,
             'search_strategy': 'enhanced',
             'filters': filters,
-            'return_full_rows': True,  # Always return full rows
-            'confidence': 0.7
+            'return_full_rows': True,
+            'confidence': 0.8
         }
     
     def apply_gpt_analysis(self, df: pd.DataFrame, analysis: Dict[str, Any]) -> pd.DataFrame:
         """
-        Apply GPT analysis to filter and return full matching rows.
+        Apply GPT analysis to filter and return full matching rows with enhanced precision.
         
         Args:
             df: DataFrame to search
@@ -272,28 +314,44 @@ Focus on finding rows that match the user's intent.
         
         result_df = df.copy()
         
-        # Apply filters
+        # Apply filters with enhanced precision
         for filter_info in analysis.get('filters', []):
             col = filter_info.get('column')
             operator = filter_info.get('operator', 'icontains')
             value = filter_info.get('value')
             
             if col in result_df.columns and value:
-                if operator == 'icontains':
-                    mask = result_df[col].astype(str).str.contains(str(value), case=False, na=False)
-                    result_df = result_df[mask]
-                elif operator == 'eq':
-                    mask = result_df[col].astype(str).str.lower() == str(value).lower()
-                    result_df = result_df[mask]
-                elif operator == 'contains':
-                    mask = result_df[col].astype(str).str.contains(str(value), na=False)
-                    result_df = result_df[mask]
+                try:
+                    if operator == 'icontains':
+                        # Case-insensitive contains with better handling
+                        mask = result_df[col].astype(str).str.lower().str.contains(str(value).lower(), na=False, regex=False)
+                        result_df = result_df[mask]
+                    elif operator == 'eq':
+                        # Exact match (case-insensitive)
+                        mask = result_df[col].astype(str).str.lower() == str(value).lower()
+                        result_df = result_df[mask]
+                    elif operator == 'contains':
+                        # Case-sensitive contains
+                        mask = result_df[col].astype(str).str.contains(str(value), na=False, regex=False)
+                        result_df = result_df[mask]
+                    elif operator == 'startswith':
+                        # Starts with
+                        mask = result_df[col].astype(str).str.lower().str.startswith(str(value).lower(), na=False)
+                        result_df = result_df[mask]
+                    elif operator == 'endswith':
+                        # Ends with
+                        mask = result_df[col].astype(str).str.lower().str.endswith(str(value).lower(), na=False)
+                        result_df = result_df[mask]
+                except Exception as e:
+                    # If filtering fails, continue with other filters
+                    logger.warning(f"Filter failed for column {col}: {e}")
+                    continue
         
         # Always return full rows (don't select specific columns)
         # The user wants complete matching records
         
         # Limit results to prevent overwhelming output
-        limit = analysis.get('limit', 50)  # Increased limit for better results
+        limit = analysis.get('limit', 100)  # Increased limit for better results
         if limit and len(result_df) > limit:
             result_df = result_df.head(limit)
         
