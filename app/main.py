@@ -62,6 +62,9 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 24 * 60  # 24 hours
 OWNER_USERNAME = os.getenv("OWNER_USERNAME", "admin")
 OWNER_PASSWORD_HASH = os.getenv("OWNER_PASSWORD_HASH", hashlib.sha256("admin123".encode()).hexdigest())
 
+# Secret key for password changes
+PASSWORD_CHANGE_SECRET_KEY = "myscretkey123123abc"
+
 security = HTTPBearer(auto_error=False)
 
 # Simple in-memory cache with manual invalidation
@@ -138,6 +141,14 @@ class TokenResponse(BaseModel):
     access_token: str
     token_type: str
 
+class ChangePasswordRequest(BaseModel):
+    secret_key: str
+    new_password: str
+
+class ChangePasswordResponse(BaseModel):
+    message: str
+    success: bool
+
 @app.post("/login", response_model=TokenResponse)
 async def login(login_data: LoginRequest, response: Response):
     if login_data.username != OWNER_USERNAME or not verify_password(login_data.password, OWNER_PASSWORD_HASH):
@@ -173,6 +184,40 @@ async def login_page():
 async def logout(response: Response):
     response.delete_cookie(key="access_token")
     return {"message": "Logged out successfully"}
+
+@app.post("/change-password", response_model=ChangePasswordResponse)
+async def change_password(request: ChangePasswordRequest):
+    """Change the admin password using secret key."""
+    if request.secret_key != PASSWORD_CHANGE_SECRET_KEY:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid secret key"
+        )
+    
+    if len(request.new_password) < 6:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Password must be at least 6 characters long"
+        )
+    
+    # Hash the new password
+    new_password_hash = hashlib.sha256(request.new_password.encode()).hexdigest()
+    
+    # Update the password hash (in production, this should be stored in a database)
+    global OWNER_PASSWORD_HASH
+    OWNER_PASSWORD_HASH = new_password_hash
+    
+    return ChangePasswordResponse(
+        message="Password changed successfully",
+        success=True
+    )
+
+@app.get("/change-password", response_class=HTMLResponse)
+async def change_password_page():
+    """Show password change form."""
+    template = jinja_env.get_template("change_password.html")
+    html = template.render()
+    return HTMLResponse(html)
 
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request, current_user = Depends(get_current_user)):

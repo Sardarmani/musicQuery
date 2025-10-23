@@ -118,7 +118,7 @@ class DataStructureAnalyzer:
     
     def get_gpt_query_analysis(self, user_query: str, data_structure: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Simple, direct approach: Send sample rows + query to GPT-5 and ask how to extract data.
+        Generic query flow: Send column names + sample rows to GPT-5 for data extraction.
         
         Args:
             user_query: User's search query
@@ -131,37 +131,45 @@ class DataStructureAnalyzer:
             return self._fallback_analysis(user_query, data_structure)
         
         try:
-            # Get the sample data (first 5-6 rows)
+            # Get column names and sample data
             sample_data = data_structure.get('sample_data', [])[:6]  # Take first 6 rows
+            columns = list(data_structure.get('columns', {}).keys())
             
-            if not sample_data:
+            if not sample_data or not columns:
                 return self._fallback_analysis(user_query, data_structure)
             
-            system_prompt = """You are a data extraction expert. I will give you sample data from a database and a user query. 
+            system_prompt = """You are a data extraction expert. I will give you:
+1. Column names from a database
+2. Sample data (first 6 rows)
+3. A user query
 
-Your job is to tell me EXACTLY how to find the data the user wants.
+Your job is to tell me EXACTLY how to extract the data the user wants.
 
-Look at the sample data and the user query, then tell me:
+Look at the column names and sample data, then tell me:
 1. Which column(s) to search in
 2. What to search for
 3. How to search (exact match, contains, etc.)
 
 Return ONLY a JSON response with this format:
 {
-  "search_column": "exact_column_name_from_sample_data",
+  "search_column": "exact_column_name_from_columns",
   "search_value": "what_to_search_for",
   "search_type": "exact" or "contains"
 }
 
-Be very specific and use the EXACT column names from the sample data."""
+Be very specific and use the EXACT column names provided."""
 
-            user_prompt = f"""SAMPLE DATA (first 6 rows from the database):
+            user_prompt = f"""COLUMN NAMES:
+{json.dumps(columns, indent=2)}
+
+SAMPLE DATA (first 6 rows):
 {json.dumps(sample_data, indent=2)}
 
 USER QUERY: "{user_query}"
 
-From this sample data and user query, tell me EXACTLY how to extract the data the user wants.
-Look at the sample data to see what columns exist and what data looks like.
+From the column names and sample data above, tell me EXACTLY how to extract the data the user wants.
+Look at the column names to see what data is available.
+Look at the sample data to see what the data looks like.
 Then tell me which column to search and what to search for.
 
 Return ONLY the JSON response."""

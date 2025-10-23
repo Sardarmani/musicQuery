@@ -66,6 +66,23 @@ h1 {
   transform: translateY(-1px);
 }
 
+.change-password-link {
+  background: linear-gradient(135deg, #3b82f6, #2563eb);
+  color: white;
+  text-decoration: none;
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  transition: all 0.3s ease;
+  margin-right: 10px;
+}
+
+.change-password-link:hover {
+  background: linear-gradient(135deg, #2563eb, #1d4ed8);
+  transform: translateY(-1px);
+}
+
 .source-link { 
   margin: 20px 0 30px; 
   text-align: center; 
