@@ -55,14 +55,21 @@ class NLQueryTranslator:
     def _try_llm(self, user_query: str, available_columns: List[str], default_worksheet: Optional[str]) -> Optional[NLQuerySpec]:
         import os
         system_prompt = (
-            "You convert a natural language request about a Google Sheet into a concise JSON spec. "
+            "You are an expert at converting natural language queries into precise database searches. "
+            "Convert user requests into JSON specifications for Google Sheets data. "
             "Only use columns that exist. If columns are ambiguous, pick the closest reasonable match. "
             "JSON keys: worksheet (string|null), select_columns (string[]), filters ({column, op, value}[]), "
             "sort_by ({column, direction}[]), limit (int|null). "
             "Operators: eq, neq, contains, icontains, gt, gte, lt, lte, in, generic_email, specific_email, fuzzy_contains, regex. "
             "For 'generic email addresses' queries, use op='generic_email' with value=true. "
             "For fuzzy matching, use op='fuzzy_contains'. For regex patterns, use op='regex'. "
-            "If user does not specify columns, leave select_columns empty."
+            "For event queries with location and time, use 'icontains' for location and month filters. "
+            "For event queries, prefer the EVENTS worksheet. "
+            "For contact searches, prefer INSTANTLY 12/10 worksheet. "
+            "For DJ/Label searches, prefer DJs / LABELS / MGMT / BOOKING worksheet. "
+            "Always prioritize the most relevant worksheet based on query context. "
+            "If user does not specify columns, leave select_columns empty. "
+            "Be intelligent about understanding user intent and context."
         )
 
         user_prompt = (
@@ -220,7 +227,118 @@ class NLQueryTranslator:
                     limit=10,
                 )
         
-        # Pattern 3: "Give me a full list of items in [location] in [time period]"
+        # Pattern 3: "events in [location] in [month]" - specific pattern for events
+        events_location_month_pattern = re.search(r"(?:gave\s+me\s+all\s+)?events?\s+(?:which\s+)?(?:happened|happeded|took\s+place|occurred|took\s+place)\s+in\s+(.+?)\s+in\s+(?:the\s+month\s+of\s+)?(.+)", q_lower)
+        if events_location_month_pattern:
+            location = events_location_month_pattern.group(1).strip()
+            month = events_location_month_pattern.group(2).strip()
+            
+            # Find relevant columns for events
+            event_cols = [col for col in available_columns if any(term in col.lower() for term in ['event', 'name', 'title', 'festival', 'club'])]
+            event_col = event_cols[0] if event_cols else None
+            
+            location_cols = [col for col in available_columns if any(term in col.lower() for term in ['country', 'city', 'location', 'place', 'country.city'])]
+            location_col = location_cols[0] if location_cols else None
+            
+            month_cols = [col for col in available_columns if any(term in col.lower() for term in ['month', 'time', 'date', 'period', 'month (for festivals)'])]
+            month_col = month_cols[0] if month_cols else None
+            
+            filters = []
+            if location_col:
+                filters.append(FilterClause(column=location_col, op="icontains", value=location))
+            if month_col:
+                filters.append(FilterClause(column=month_col, op="icontains", value=month))
+            
+            if filters:
+                select_cols = []
+                if event_col:
+                    select_cols.append(event_col)
+                if location_col:
+                    select_cols.append(location_col)
+                if month_col:
+                    select_cols.append(month_col)
+                
+                return NLQuerySpec(
+                    worksheet=default_worksheet,
+                    select_columns=select_cols,
+                    filters=filters,
+                )
+        
+        # Pattern 3.4: Specific pattern for "Italian events in August" type queries
+        italian_events_pattern = re.search(r"(?:gave\s+me\s+|show\s+me\s+|give\s+me\s+|find\s+)?(?:list\s+of\s+)?(?:all\s+)?(.+?)\s+events?\s+(?:in\s+|during\s+|for\s+)?(?:the\s+month\s+of\s+)?(.+)", q_lower)
+        if italian_events_pattern and ("event" in q_lower or "italian" in q_lower or "august" in q_lower):
+            location = italian_events_pattern.group(1).strip()
+            time_period = italian_events_pattern.group(2).strip()
+            
+            # Find relevant columns for events
+            event_cols = [col for col in available_columns if any(term in col.lower() for term in ['event', 'name', 'title', 'festival', 'club'])]
+            event_col = event_cols[0] if event_cols else None
+            
+            location_cols = [col for col in available_columns if any(term in col.lower() for term in ['country', 'city', 'location', 'place', 'country.city'])]
+            location_col = location_cols[0] if location_cols else None
+            
+            time_cols = [col for col in available_columns if any(term in col.lower() for term in ['month', 'time', 'date', 'period', 'month (for festivals)'])]
+            time_col = time_cols[0] if time_cols else None
+            
+            filters = []
+            if location_col:
+                filters.append(FilterClause(column=location_col, op="icontains", value=location))
+            if time_col:
+                filters.append(FilterClause(column=time_col, op="icontains", value=time_period))
+            
+            if filters:
+                select_cols = []
+                if event_col:
+                    select_cols.append(event_col)
+                if location_col:
+                    select_cols.append(location_col)
+                if time_col:
+                    select_cols.append(time_col)
+                
+                return NLQuerySpec(
+                    worksheet=default_worksheet,
+                    select_columns=select_cols,
+                    filters=filters,
+                )
+        
+        # Pattern 3.5: General event queries with location and time
+        general_event_pattern = re.search(r"(?:show\s+me\s+|give\s+me\s+|find\s+)?(?:all\s+)?events?\s+(?:in\s+|from\s+)?(.+?)\s+(?:in\s+|during\s+|for\s+)?(?:the\s+month\s+of\s+)?(.+)", q_lower)
+        if general_event_pattern and ("event" in q_lower or "italian" in q_lower or "august" in q_lower):
+            location = general_event_pattern.group(1).strip()
+            time_period = general_event_pattern.group(2).strip()
+            
+            # Find relevant columns for events
+            event_cols = [col for col in available_columns if any(term in col.lower() for term in ['event', 'name', 'title', 'festival', 'club'])]
+            event_col = event_cols[0] if event_cols else None
+            
+            location_cols = [col for col in available_columns if any(term in col.lower() for term in ['country', 'city', 'location', 'place', 'country.city'])]
+            location_col = location_cols[0] if location_cols else None
+            
+            time_cols = [col for col in available_columns if any(term in col.lower() for term in ['month', 'time', 'date', 'period', 'month (for festivals)'])]
+            time_col = time_cols[0] if time_cols else None
+            
+            filters = []
+            if location_col:
+                filters.append(FilterClause(column=location_col, op="icontains", value=location))
+            if time_col:
+                filters.append(FilterClause(column=time_col, op="icontains", value=time_period))
+            
+            if filters:
+                select_cols = []
+                if event_col:
+                    select_cols.append(event_col)
+                if location_col:
+                    select_cols.append(location_col)
+                if time_col:
+                    select_cols.append(time_col)
+                
+                return NLQuerySpec(
+                    worksheet=default_worksheet,
+                    select_columns=select_cols,
+                    filters=filters,
+                )
+        
+        # Pattern 4: "Give me a full list of items in [location] in [time period]"
         location_time_pattern = re.search(r"(.+?) in (.+?) in (.+)", q_lower)
         if location_time_pattern:
             item_type = location_time_pattern.group(1).strip()
@@ -262,7 +380,7 @@ class NLQueryTranslator:
                     filters=filters,
                 )
         
-        # Pattern 4: "events in [country]" (without month)
+        # Pattern 6: "events in [country]" (without month)
         country_only_pattern = re.search(r"events in (.+?)(?:\s+in\s|$)", q_lower)
         if country_only_pattern and "month" not in q_lower:
             country = country_only_pattern.group(1).strip()

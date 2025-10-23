@@ -192,16 +192,33 @@ class DataProcessor:
         # Create search mask - start with False for all rows
         mask = pd.Series([False] * len(df), index=df.index)
         
+        # For event queries, prioritize location and time columns
+        location_terms = ['italian', 'italy', 'french', 'france', 'german', 'germany', 'spanish', 'spain', 'august', 'july', 'june', 'september']
+        has_location_terms = any(term in query_lower for term in location_terms)
+        
         for col in search_columns:
             col_mask = pd.Series([False] * len(df), index=df.index)
+            col_lower = col.lower()
+            
+            # Prioritize location and time columns for event queries
+            is_location_col = any(term in col_lower for term in ['country', 'city', 'location', 'place'])
+            is_time_col = any(term in col_lower for term in ['month', 'time', 'date', 'period'])
+            is_event_col = any(term in col_lower for term in ['event', 'name', 'title', 'festival', 'club'])
             
             for term in query_terms:
                 # Exact match (case-insensitive)
                 exact_match = df[col].astype(str).str.lower().str.contains(re.escape(term), na=False, regex=True)
                 col_mask |= exact_match
                 
-                # Fuzzy match for better results (only if exact match fails)
-                if not col_mask.any():  # Only apply fuzzy if no exact matches
+                # For location terms, be more strict about matching
+                if term in location_terms and is_location_col:
+                    # Require higher similarity for location terms
+                    fuzzy_match = df[col].astype(str).apply(
+                        lambda x: any(SequenceMatcher(None, term, word.lower()).ratio() > 0.8 
+                                    for word in str(x).split() if word.strip())
+                    )
+                    col_mask |= fuzzy_match
+                elif not col_mask.any():  # Only apply fuzzy if no exact matches
                     fuzzy_match = df[col].astype(str).apply(
                         lambda x: any(SequenceMatcher(None, term, word.lower()).ratio() > 0.7 
                                     for word in str(x).split() if word.strip())

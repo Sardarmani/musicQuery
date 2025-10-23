@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Login - Music Database</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="container">
+    <div class="login-container">
+      <h1>🔐 Owner Login</h1>
+      <p class="login-subtitle">Access the Music Industry Database</p>
+      
+      <form id="loginForm" class="login-form">
+        <div class="form-group">
+          <label for="username">Username</label>
+          <input type="text" id="username" name="username" required>
+        </div>
+        
+        <div class="form-group">
+          <label for="password">Password</label>
+          <input type="password" id="password" name="password" required>
+        </div>
+        
+        <button type="submit" class="login-btn">
+          <span class="btn-icon">🔑</span>
+          Login
+        </button>
+      </form>
+      
+      <div id="loginMsg" class="msg" role="status" aria-live="polite"></div>
+    </div>
+  </div>
+
+  <script>
+    const form = document.getElementById('loginForm');
+    const msg = document.getElementById('loginMsg');
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      
+      const username = document.getElementById('username').value;
+      const password = document.getElementById('password').value;
+      
+      msg.textContent = 'Logging in...';
+      msg.className = 'msg info';
+      
+      try {
+        const response = await fetch('/login', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ username, password })
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          // Store token in localStorage for API calls
+          localStorage.setItem('access_token', data.access_token);
+          msg.textContent = 'Login successful! Redirecting...';
+          msg.className = 'msg success';
+          
+          // Redirect to main page
+          setTimeout(() => {
+            window.location.href = '/';
+          }, 1000);
+        } else {
+          const error = await response.json();
+          msg.textContent = 'Login failed: ' + (error.detail || 'Invalid credentials');
+          msg.className = 'msg error';
+        }
+      } catch (err) {
+        msg.textContent = 'Error: ' + (err.message || 'Login failed');
+        msg.className = 'msg error';
+      }
+    });
+
+    // Check if already logged in
+    if (localStorage.getItem('access_token')) {
+      window.location.href = '/';
+    }
+  </script>
+</body>
+</html>

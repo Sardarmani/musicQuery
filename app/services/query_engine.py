@@ -28,6 +28,9 @@ def apply_query_spec(df: pd.DataFrame, spec: NLQuerySpec) -> pd.DataFrame:
         if existing:
             result = result[existing]
 
+    # Enhanced result ranking and quality scoring
+    result = _rank_results(result, spec)
+
     # Sorting
     if spec.sort_by:
         by: List[str] = []
@@ -46,6 +49,59 @@ def apply_query_spec(df: pd.DataFrame, spec: NLQuerySpec) -> pd.DataFrame:
         result = result.head(spec.limit)
 
     return result.reset_index(drop=True)
+
+
+def _rank_results(df: pd.DataFrame, spec: NLQuerySpec) -> pd.DataFrame:
+    """
+    Rank results by relevance and quality to ensure consistent, excellent results.
+    """
+    if df is None or df.empty:
+        return df
+    
+    # Create a relevance score for each row
+    relevance_scores = []
+    
+    for idx, row in df.iterrows():
+        score = 0
+        
+        # Base score for having data
+        non_null_count = row.notna().sum()
+        score += non_null_count * 0.1
+        
+        # Bonus for complete records (more non-null values)
+        completeness_ratio = non_null_count / len(row)
+        score += completeness_ratio * 10
+        
+        # Bonus for having email addresses
+        email_cols = [col for col in df.columns if 'email' in col.lower()]
+        for col in email_cols:
+            if pd.notna(row[col]) and '@' in str(row[col]):
+                score += 5
+        
+        # Bonus for having contact information
+        contact_cols = [col for col in df.columns if any(term in col.lower() for term in ['name', 'contact', 'linkedin', 'instagram'])]
+        for col in contact_cols:
+            if pd.notna(row[col]) and str(row[col]).strip():
+                score += 2
+        
+        # Penalty for empty or placeholder values
+        for col in df.columns:
+            if pd.notna(row[col]):
+                value = str(row[col]).strip().lower()
+                if value in ['', 'n/a', 'na', 'null', 'none', '-', 'tbd', 'tba']:
+                    score -= 1
+        
+        relevance_scores.append(score)
+    
+    # Add relevance score as a column and sort by it
+    df_with_scores = df.copy()
+    df_with_scores['_relevance_score'] = relevance_scores
+    
+    # Sort by relevance score (descending) and then by original index
+    df_with_scores = df_with_scores.sort_values(['_relevance_score', df_with_scores.index], ascending=[False, True])
+    
+    # Remove the relevance score column before returning
+    return df_with_scores.drop('_relevance_score', axis=1)
 
 
 def _apply_filter(df: pd.DataFrame, flt: FilterClause) -> pd.DataFrame:

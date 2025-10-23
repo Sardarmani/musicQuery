@@ -70,6 +70,7 @@ _CACHE: Dict[str, pd.DataFrame] = {}
 def _cache_key(sheet_id: str, worksheet: Optional[str]) -> str:
     return f"{sheet_id}:{worksheet or 'sheet1'}"
 
+
 def _read_dataframe_cached(sheet_id: str, worksheet: Optional[str]) -> pd.DataFrame:
     key = _cache_key(sheet_id, worksheet)
     if key in _CACHE:
@@ -78,9 +79,11 @@ def _read_dataframe_cached(sheet_id: str, worksheet: Optional[str]) -> pd.DataFr
     _CACHE[key] = df
     return df
 
+
 def _invalidate_cache(sheet_id: str, worksheet: Optional[str]):
     key = _cache_key(sheet_id, worksheet)
     _CACHE.pop(key, None)
+
 
 # Authentication functions
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
@@ -93,6 +96,7 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     encoded_jwt = jwt.encode(to_encode, JWT_SECRET_KEY, algorithm=JWT_ALGORITHM)
     return encoded_jwt
 
+
 def verify_token(token: str):
     try:
         payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
@@ -102,6 +106,7 @@ def verify_token(token: str):
         return username
     except jwt.PyJWTError:
         return None
+
 
 def get_current_user(request: Request, credentials: HTTPAuthorizationCredentials = Depends(security)):
     token = None
@@ -123,20 +128,25 @@ def get_current_user(request: Request, credentials: HTTPAuthorizationCredentials
         return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
     return username
 
+
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     return hashlib.sha256(plain_password.encode()).hexdigest() == hashed_password
+
 
 class QueryRequest(BaseModel):
     query: str
     worksheet: Optional[str] = None
 
+
 class LoginRequest(BaseModel):
     username: str
     password: str
 
+
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str
+
 
 @app.post("/login", response_model=TokenResponse)
 async def login(login_data: LoginRequest, response: Response):
@@ -163,16 +173,19 @@ async def login(login_data: LoginRequest, response: Response):
     
     return {"access_token": access_token, "token_type": "bearer"}
 
+
 @app.get("/login", response_class=HTMLResponse)
 async def login_page():
     template = jinja_env.get_template("login.html")
     html = template.render()
     return HTMLResponse(html)
 
+
 @app.post("/logout")
 async def logout(response: Response):
     response.delete_cookie(key="access_token")
     return {"message": "Logged out successfully"}
+
 
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request, current_user = Depends(get_current_user)):
@@ -184,6 +197,7 @@ async def index(request: Request, current_user = Depends(get_current_user)):
     template = jinja_env.get_template("index.html")
     html = template.render(worksheet_names=worksheet_names)
     return HTMLResponse(html)
+
 
 @app.post("/smart-search", response_class=HTMLResponse)
 async def smart_search(request: Request, query: str = Form(...), worksheet: Optional[str] = Form(None), current_user = Depends(get_current_user)):
@@ -269,18 +283,20 @@ async def smart_search(request: Request, query: str = Form(...), worksheet: Opti
     )
     return HTMLResponse(html)
 
+
 @app.post("/query", response_class=HTMLResponse)
 async def run_query(request: Request, query: str = Form(...), worksheet: Optional[str] = Form(None), current_user = Depends(get_current_user)):
     # Check if current_user is a RedirectResponse (authentication failed)
     if isinstance(current_user, RedirectResponse):
         return current_user
-    
     worksheet_names = sheets_client.list_worksheets(settings.google_sheet_id)
+    
+    # Try the new GPT-powered data analysis approach first
     result_df = None
     selected_ws = None
     no_results_message = ""
     
-    # If a specific worksheet is selected, search only in that worksheet
+    # If a specific worksheet is selected, use GPT analysis
     if worksheet and worksheet.strip() in [name.strip() for name in worksheet_names]:
         # Find the exact worksheet name (handle spaces and case)
         exact_worksheet_name = None
@@ -291,36 +307,119 @@ async def run_query(request: Request, query: str = Form(...), worksheet: Optiona
         
         if exact_worksheet_name:
             try:
-                # Get columns dynamically for the selected worksheet
-                available_columns = sheets_client.get_columns(settings.google_sheet_id, exact_worksheet_name)
-                spec: NLQuerySpec = translator.translate(
-                    user_query=query,
-                    available_columns=available_columns,
-                    default_worksheet=exact_worksheet_name,
-                )
+                # Get the data
                 df = _read_dataframe_cached(settings.google_sheet_id, exact_worksheet_name)
-                result_df = apply_query_spec(df, spec)
-                selected_ws = exact_worksheet_name
-                
-                # If no results from structured query, try generic search
-                if result_df is None or result_df.empty:
-                    try:
-                        df = _read_dataframe_cached(settings.google_sheet_id, exact_worksheet_name)
-                        if df is not None and not df.empty:
-                            result_df = generic_handler.enhanced_generic_search(df, query)
-                            selected_ws = exact_worksheet_name
-                    except Exception:
-                        pass
-                
-                # If still no results, try enhanced search
-                if result_df is None or result_df.empty:
-                    try:
-                        df = _read_dataframe_cached(settings.google_sheet_id, exact_worksheet_name)
-                        if df is not None and not df.empty:
-                            enhanced_results = data_processor.enhanced_search(df, query)
-                            if not enhanced_results.empty:
-                                result_df = enhanced_results.head(10)  # Limit to 10 results
+                if df is not None and not df.empty:
+                    # Analyze data structure
+                    data_structure = data_analyzer.analyze_data_structure(df, exact_worksheet_name)
+                    
+                    # Get GPT analysis of the query
+                    gpt_analysis = data_analyzer.get_gpt_query_analysis(query, data_structure)
+                    
+                    # Apply GPT analysis to get results
+                    result_df = data_analyzer.apply_gpt_analysis(df, gpt_analysis)
+                    selected_ws = exact_worksheet_name
+                    
+                    if result_df.empty:
+                        no_results_message = f"No records found in '{exact_worksheet_name}' worksheet for the query: '{query}'"
+                        
+            except Exception as e:
+                no_results_message = f"Error analyzing '{exact_worksheet_name}' worksheet: {str(e)}"
+    
+    # If no results from GPT analysis, fall back to original logic
+    if result_df is None or result_df.empty:
+        # If a specific worksheet is selected, search only in that worksheet
+        if worksheet and worksheet.strip() in [name.strip() for name in worksheet_names]:
+            # Find the exact worksheet name (handle spaces and case)
+            exact_worksheet_name = None
+            for name in worksheet_names:
+                if name.strip().lower() == worksheet.strip().lower():
+                    exact_worksheet_name = name
+                    break
+            
+            if exact_worksheet_name:
+                try:
+                    # Get columns dynamically for the selected worksheet
+                    available_columns = sheets_client.get_columns(settings.google_sheet_id, exact_worksheet_name)
+                    spec: NLQuerySpec = translator.translate(
+                        user_query=query,
+                        available_columns=available_columns,
+                        default_worksheet=exact_worksheet_name,
+                    )
+                    df = _read_dataframe_cached(settings.google_sheet_id, exact_worksheet_name)
+                    result_df = apply_query_spec(df, spec)
+                    selected_ws = exact_worksheet_name
+                    
+                    # If no results from structured query, try generic search with stricter filtering
+                    if result_df is None or result_df.empty:
+                        try:
+                            df = _read_dataframe_cached(settings.google_sheet_id, exact_worksheet_name)
+                            if df is not None and not df.empty:
+                                # Apply stricter filtering for event queries
+                                if any(term in query.lower() for term in ['event', 'italian', 'august', 'italy']):
+                                    # For event queries, be more selective
+                                    result_df = generic_handler.enhanced_generic_search(df, query)
+                                    # Apply additional filtering to ensure relevance
+                                    if not result_df.empty:
+                                        # Filter by location if Italian/Italy is mentioned
+                                        if 'italian' in query.lower() or 'italy' in query.lower():
+                                            location_cols = [col for col in result_df.columns if any(term in col.lower() for term in ['country', 'city', 'location', 'place'])]
+                                            if location_cols:
+                                                location_mask = pd.Series([False] * len(result_df), index=result_df.index)
+                                                for col in location_cols:
+                                                    location_mask |= result_df[col].astype(str).str.contains('italy|italian', case=False, na=False)
+                                                result_df = result_df[location_mask]
+                                        
+                                        # Filter by month if August is mentioned
+                                        if 'august' in query.lower():
+                                            month_cols = [col for col in result_df.columns if any(term in col.lower() for term in ['month', 'time', 'date', 'period'])]
+                                            if month_cols:
+                                                month_mask = pd.Series([False] * len(result_df), index=result_df.index)
+                                                for col in month_cols:
+                                                    month_mask |= result_df[col].astype(str).str.contains('august', case=False, na=False)
+                                                result_df = result_df[month_mask]
+                                        
+                                        # Limit results to prevent overwhelming output
+                                        result_df = result_df.head(20)
+                                else:
+                                    result_df = generic_handler.enhanced_generic_search(df, query)
                                 selected_ws = exact_worksheet_name
+                        except Exception:
+                            pass
+                
+                # If still no results, try enhanced search with stricter filtering
+                if result_df is None or result_df.empty:
+                    try:
+                        df = _read_dataframe_cached(settings.google_sheet_id, exact_worksheet_name)
+                        if df is not None and not df.empty:
+                            # Apply stricter filtering for event queries
+                            if any(term in query.lower() for term in ['event', 'italian', 'august', 'italy']):
+                                enhanced_results = data_processor.enhanced_search(df, query)
+                                if not enhanced_results.empty:
+                                    # Apply additional filtering to ensure relevance
+                                    if 'italian' in query.lower() or 'italy' in query.lower():
+                                        location_cols = [col for col in enhanced_results.columns if any(term in col.lower() for term in ['country', 'city', 'location', 'place'])]
+                                        if location_cols:
+                                            location_mask = pd.Series([False] * len(enhanced_results), index=enhanced_results.index)
+                                            for col in location_cols:
+                                                location_mask |= enhanced_results[col].astype(str).str.contains('italy|italian', case=False, na=False)
+                                            enhanced_results = enhanced_results[location_mask]
+                                    
+                                    if 'august' in query.lower():
+                                        month_cols = [col for col in enhanced_results.columns if any(term in col.lower() for term in ['month', 'time', 'date', 'period'])]
+                                        if month_cols:
+                                            month_mask = pd.Series([False] * len(enhanced_results), index=enhanced_results.index)
+                                            for col in month_cols:
+                                                month_mask |= enhanced_results[col].astype(str).str.contains('august', case=False, na=False)
+                                            enhanced_results = enhanced_results[month_mask]
+                                    
+                                    result_df = enhanced_results.head(20)  # Limit to 20 results
+                                    selected_ws = exact_worksheet_name
+                            else:
+                                enhanced_results = data_processor.enhanced_search(df, query)
+                                if not enhanced_results.empty:
+                                    result_df = enhanced_results.head(10)
+                                    selected_ws = exact_worksheet_name
                     except Exception:
                         pass
                 
@@ -385,7 +484,7 @@ async def run_query(request: Request, query: str = Form(...), worksheet: Optiona
                 except Exception:
                     continue
         
-        # If still no results, try enhanced search across all worksheets
+        # If still no results, try enhanced search across all worksheets with stricter filtering
         if result_df is None or result_df.empty:
             for ws_name in worksheet_names:
                 try:
@@ -395,9 +494,34 @@ async def run_query(request: Request, query: str = Form(...), worksheet: Optiona
                         # Enhanced search using data processor
                         enhanced_results = data_processor.enhanced_search(df_try, query)
                         if not enhanced_results.empty:
-                            result_df = enhanced_results.head(10)  # Limit to 10 results
-                            selected_ws = ws_name
-                            break
+                            # Apply additional filtering for event queries
+                            if any(term in query.lower() for term in ['event', 'italian', 'august', 'italy']):
+                                # Filter by location if Italian/Italy is mentioned
+                                if 'italian' in query.lower() or 'italy' in query.lower():
+                                    location_cols = [col for col in enhanced_results.columns if any(term in col.lower() for term in ['country', 'city', 'location', 'place'])]
+                                    if location_cols:
+                                        location_mask = pd.Series([False] * len(enhanced_results), index=enhanced_results.index)
+                                        for col in location_cols:
+                                            location_mask |= enhanced_results[col].astype(str).str.contains('italy|italian', case=False, na=False)
+                                        enhanced_results = enhanced_results[location_mask]
+                                
+                                # Filter by month if August is mentioned
+                                if 'august' in query.lower():
+                                    month_cols = [col for col in enhanced_results.columns if any(term in col.lower() for term in ['month', 'time', 'date', 'period'])]
+                                    if month_cols:
+                                        month_mask = pd.Series([False] * len(enhanced_results), index=enhanced_results.index)
+                                        for col in month_cols:
+                                            month_mask |= enhanced_results[col].astype(str).str.contains('august', case=False, na=False)
+                                        enhanced_results = enhanced_results[month_mask]
+                                
+                                if not enhanced_results.empty:
+                                    result_df = enhanced_results.head(20)  # Limit to 20 results
+                                    selected_ws = ws_name
+                                    break
+                            else:
+                                result_df = enhanced_results.head(10)  # Limit to 10 results
+                                selected_ws = ws_name
+                                break
                 except Exception:
                     continue
         
@@ -421,12 +545,12 @@ async def run_query(request: Request, query: str = Form(...), worksheet: Optiona
     )
     return HTMLResponse(html)
 
+
 @app.post("/download")
 async def download_csv(query: str = Form(...), worksheet: Optional[str] = Form(None), current_user = Depends(get_current_user)):
     # Check if current_user is a RedirectResponse (authentication failed)
     if isinstance(current_user, RedirectResponse):
         return current_user
-    
     # Use the same logic as the main query endpoint
     worksheet_names = sheets_client.list_worksheets(settings.google_sheet_id)
     result_df = None
@@ -553,13 +677,13 @@ async def download_csv(query: str = Form(...), worksheet: Optional[str] = Form(N
         headers={"Content-Disposition": "attachment; filename=results.csv"},
     )
 
+
 # Excel export
 @app.post("/download-xlsx")
 async def download_xlsx(query: str = Form(...), worksheet: Optional[str] = Form(None), current_user = Depends(get_current_user)):
     # Check if current_user is a RedirectResponse (authentication failed)
     if isinstance(current_user, RedirectResponse):
         return current_user
-    
     spec: NLQuerySpec = translator.translate(
         user_query=query,
         available_columns=sheets_client.get_columns(settings.google_sheet_id, worksheet),
@@ -580,10 +704,12 @@ async def download_xlsx(query: str = Form(...), worksheet: Optional[str] = Form(
         headers={"Content-Disposition": "attachment; filename=results.xlsx"},
     )
 
+
 # Ingestion endpoint: send new contacts from GPT workflow
 class IngestRequest(BaseModel):
     contacts: List[Dict[str, Any]]
     worksheet: Optional[str] = "New contacts"
+
 
 @app.post("/api/contacts/new")
 async def add_new_contacts(payload: IngestRequest, x_ingest_token: Optional[str] = Header(None)):
@@ -609,16 +735,17 @@ async def add_new_contacts(payload: IngestRequest, x_ingest_token: Optional[str]
 
     return {"inserted": len(rows), "worksheet": worksheet}
 
+
 # Add contact via NL text; appends one row to "New contacts"
 class AddContactRequest(BaseModel):
     query: str
+
 
 @app.post("/add_contact")
 async def add_contact(data: AddContactRequest, current_user = Depends(get_current_user)):
     # Check if current_user is a RedirectResponse (authentication failed)
     if isinstance(current_user, RedirectResponse):
         return current_user
-    
     text = data.query
     fields = extract_contact_fields(translator, text)
 
@@ -630,6 +757,7 @@ async def add_contact(data: AddContactRequest, current_user = Depends(get_curren
     _invalidate_cache(settings.google_sheet_id, worksheet)
 
     return JSONResponse({"status": "success", "message": "Contact added successfully!"})
+
 
 # Data quality endpoint
 @app.get("/api/data-quality/{worksheet}")
@@ -644,6 +772,7 @@ async def get_data_quality(worksheet: str):
         return JSONResponse(metrics)
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
+
 
 # Enhanced search endpoint
 @app.post("/api/search")

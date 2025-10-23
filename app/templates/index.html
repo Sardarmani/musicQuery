@@ -3,27 +3,50 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Music industry </title>
+  <title>Sheets NL Dashboard</title>
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
   <div class="container">
-    <h1>Music industry database 2025</h1>
+    <div class="header-section">
+      <h1>Music industry database 2025</h1>
+      <div class="source-link">
+        <a href="https://docs.google.com/spreadsheets/d/1c74zI616Udwc6lBCJpTBYEp0ifktHrbsydeTKQrd5q4/edit?gid=1385300757#gid=1385300757" target="_blank" class="original-db-link">
+          📊 View Original Database
+        </a>
+      </div>
+      <div class="user-info">
+        <span class="user-badge">👤 Owner</span>
+        <button id="logoutBtn" class="logout-btn">Logout</button>
+      </div>
+    </div>
 
-    <form method="post" action="/query" class="query-form">
-      <label>Select Worksheet </label>
-      <select name="worksheet" required>
-        <option value="">Choose a worksheet...</option>
-        {% for name in worksheet_names %}
-          <option value="{{ name }}" {% if selected_worksheet == name %}selected{% endif %}>{{ name }}</option>
-        {% endfor %}
-      </select>
+    <div class="search-info">
+      <p class="rate-limit-note">⚠️ Searches are limited to 1 per minute as per Google API</p>
+    </div>
 
-      <label>Ask me anything (eg. Show me a table of Italian clubs, promoters or festivals.</label>
-      <textarea name="query" rows="3" placeholder="Type your question here..." required>{{ query_text or '' }}</textarea>
+    <form method="post" action="/smart-search" class="query-form">
+      <div class="form-group">
+        <label for="worksheet">Choose Your Data Source</label>
+        <select name="worksheet" id="worksheet" required>
+          <option value="">Select a worksheet to search...</option>
+          {% for name in worksheet_names %}
+            <option value="{{ name }}" {% if selected_worksheet == name %}selected{% endif %}>{{ name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label for="query">Search the Music Industry Database</label>
+        <textarea name="query" id="query" rows="4" placeholder="Example: Show me a table of Italian clubs, promoters or festivals in August..." required>{{ query_text or '' }}</textarea>
+        <small class="help-text">Ask questions in natural language. The AI will understand and find relevant results.</small>
+      </div>
 
       <div class="actions">
-        <button type="submit">Search</button>
+        <button type="submit" formaction="/smart-search" class="smart-search-btn">
+          <span class="btn-icon">🧠</span>
+          Smart Search (GPT)
+        </button>
       </div>
     </form>
 
@@ -39,16 +62,21 @@
         <div class="table-wrapper">
           {{ table_html | safe }}
         </div>
-        <form method="post" action="/download">
-          <input type="hidden" name="query" value="{{ query_text }}">
-          <input type="hidden" name="worksheet" value="{{ selected_worksheet or '' }}">
-          <button type="submit">Download CSV</button>
-        </form>
-        <form method="post" action="/download-xlsx">
-          <input type="hidden" name="query" value="{{ query_text }}">
-          <input type="hidden" name="worksheet" value="{{ selected_worksheet or '' }}">
-          <button type="submit">Download Excel</button>
-        </form>
+        <div class="results-actions">
+          <form method="post" action="/download">
+            <input type="hidden" name="query" value="{{ query_text }}">
+            <input type="hidden" name="worksheet" value="{{ selected_worksheet or '' }}">
+            <button type="submit">Download CSV</button>
+          </form>
+          <form method="post" action="/download-xlsx">
+            <input type="hidden" name="query" value="{{ query_text }}">
+            <input type="hidden" name="worksheet" value="{{ selected_worksheet or '' }}">
+            <button type="submit">Download Excel</button>
+          </form>
+          <a href="https://docs.google.com/spreadsheets/d/1c74zI616Udwc6lBCJpTBYEp0ifktHrbsydeTKQrd5q4/edit?gid=1385300757#gid=1385300757" target="_blank" class="original-db-link">
+            📊 View Original Database
+          </a>
+        </div>
       </div>
     {% endif %}
 
@@ -56,7 +84,7 @@
 
     <section class="add-contact">
       <h2>Add New Contact</h2>
-      <p>Add as many details below so that these details will appear in future searches. You can add their Instagram link, LinkedIn, role etc. Always ensure you add an email.</p>
+      <p> Add as many details below so that these details will appear in future searches. You can add their Instagram link, LinkedIn, role etc. Always ensure you add an email."</p>
       <textarea id="contactText" rows="3" placeholder="Type contact details..."></textarea>
       <div class="actions">
         <button id="addContactBtn" type="button">Add Contact</button>
@@ -66,6 +94,32 @@
   </div>
 
   <script>
+    // Authentication handling - check both localStorage and cookies
+    const token = localStorage.getItem('access_token');
+    const hasCookie = document.cookie.includes('access_token=');
+    
+    if (!token && !hasCookie) {
+      window.location.href = '/login';
+    }
+
+    // Logout functionality
+    document.getElementById('logoutBtn').addEventListener('click', async () => {
+      try {
+        await fetch('/logout', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+      } catch (err) {
+        console.error('Logout error:', err);
+      } finally {
+        localStorage.removeItem('access_token');
+        window.location.href = '/login';
+      }
+    });
+
+    // Add contact functionality
     const btn = document.getElementById('addContactBtn');
     const input = document.getElementById('contactText');
     const msg = document.getElementById('addContactMsg');
@@ -82,10 +136,18 @@
       try {
         const res = await fetch('/add_contact', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
           body: JSON.stringify({ query: text })
         });
         if (!res.ok) {
+          if (res.status === 401) {
+            localStorage.removeItem('access_token');
+            window.location.href = '/login';
+            return;
+          }
           const t = await res.text();
           throw new Error(t || 'Request failed');
         }
@@ -100,6 +162,50 @@
     }
 
     btn?.addEventListener('click', addContact);
+
+    // Add authentication to form submissions
+    document.querySelectorAll('form').forEach(form => {
+      form.addEventListener('submit', async (e) => {
+        if (form.action.includes('/smart-search') || form.action.includes('/download')) {
+          e.preventDefault();
+          
+          const formData = new FormData(form);
+          
+          try {
+            const response = await fetch(form.action, {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${token}`
+              },
+              body: formData
+            });
+            
+            if (response.status === 401) {
+              localStorage.removeItem('access_token');
+              window.location.href = '/login';
+              return;
+            }
+            
+            if (form.action.includes('/download')) {
+              const blob = await response.blob();
+              const url = window.URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url;
+              a.download = form.action.includes('xlsx') ? 'results.xlsx' : 'results.csv';
+              document.body.appendChild(a);
+              a.click();
+              window.URL.revokeObjectURL(url);
+              document.body.removeChild(a);
+            } else {
+              const html = await response.text();
+              document.body.innerHTML = html;
+            }
+          } catch (err) {
+            console.error('Request failed:', err);
+          }
+        }
+      });
+    });
   </script>
 </body>
 </html>
