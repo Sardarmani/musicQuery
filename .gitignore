@@ -12,3 +12,5 @@ secrets/
 # IDE
 .vscode/
 .idea/
+
+secrets/service_account.json
