@@ -138,7 +138,7 @@ class DataStructureAnalyzer:
 1. ALL the data from a database/spreadsheet
 2. A user query
 
-CRITICAL: You must match ALL conditions mentioned in the user query. Do NOT ignore any part of the query.
+CRITICAL: You must match ALL conditions mentioned in the user query EXACTLY. Do NOT ignore any part of the query.
 
 Examples:
 - Query "UK events in July" → Find records that have BOTH "UK" AND "July"
@@ -151,8 +151,15 @@ IMPORTANT RULES:
 3. If a query mentions location AND time, the record must have BOTH
 4. If a query mentions country AND month, the record must have BOTH
 5. If a query mentions LinkedIn, the record must have actual LinkedIn data (not empty/null)
-6. Be very strict about matching ALL conditions
+6. Be VERY strict about matching ALL conditions
 7. Check for actual data presence - don't include records with empty fields when specific data is requested
+8. If query asks for "Portugal" events, ONLY include records from Portugal - exclude Ukraine, Italy, etc.
+9. If query asks for LinkedIn, ONLY include records that have actual LinkedIn data
+
+STRICT MATCHING EXAMPLES:
+- Query "Portugal events in July" → ONLY Portugal records in July (exclude Ukraine, Italy, etc.)
+- Query "Portugal events in July with LinkedIn" → ONLY Portugal records in July WITH LinkedIn data
+- Query "UK events in August" → ONLY UK records in August (exclude other countries)
 
 Return ONLY a JSON array of records that match ALL the conditions mentioned in the user query.
 If no records match ALL conditions, return an empty array [].
@@ -168,25 +175,30 @@ Example response format:
 
 USER QUERY: "{user_query}"
 
-TASK: Find records that match ALL conditions mentioned in the user query.
+TASK: Find records that match ALL conditions mentioned in the user query EXACTLY.
 
 ANALYSIS REQUIRED:
 1. Identify ALL conditions in the user query (location, time, event type, specific data fields, etc.)
 2. Look for records that contain ALL of these conditions
 3. A record must match ALL conditions to be included in results
-4. Be very strict - if a record is missing ANY condition, exclude it
+4. Be VERY strict - if a record is missing ANY condition, exclude it
 5. Check for actual data presence - if a query asks for specific data (like LinkedIn), the record must have actual data (not empty/null)
 
 EXAMPLES:
-- Query "UK events in July" → Find records with BOTH "UK" AND "July"
-- Query "Portugal events in July with LinkedIn" → Find records with "Portugal" AND "July" AND actual LinkedIn data
-- Query "Italian festivals in August" → Find records with BOTH "Italian" AND "August"
+- Query "UK events in July" → Find records with BOTH "UK" AND "July" (exclude other countries)
+- Query "Portugal events in July with LinkedIn" → Find records with "Portugal" AND "July" AND actual LinkedIn data (exclude Ukraine, Italy, etc.)
+- Query "Italian festivals in August" → Find records with BOTH "Italian" AND "August" (exclude other countries)
 
-DATA VALIDATION:
-- If query mentions LinkedIn, only include records with actual LinkedIn URLs/data
-- If query mentions email, only include records with actual email addresses
-- If query mentions phone, only include records with actual phone numbers
-- Never include records with empty/null values for requested specific data
+STRICT VALIDATION RULES:
+- If query mentions "Portugal", ONLY include records from Portugal - EXCLUDE Ukraine, Italy, UK, etc.
+- If query mentions "July", ONLY include records from July - EXCLUDE other months
+- If query mentions LinkedIn, ONLY include records with actual LinkedIn URLs/data - EXCLUDE empty LinkedIn fields
+- If query mentions email, ONLY include records with actual email addresses - EXCLUDE empty email fields
+- If query mentions phone, ONLY include records with actual phone numbers - EXCLUDE empty phone fields
+
+EXCLUSION EXAMPLES:
+- Query "Portugal events in July" → EXCLUDE Ukraine events, EXCLUDE August events, EXCLUDE Italian events
+- Query "Portugal events in July with LinkedIn" → EXCLUDE Ukraine events, EXCLUDE July events without LinkedIn, EXCLUDE Portugal events in other months
 
 Return ONLY a JSON array of records that match ALL conditions.
 If no records match ALL conditions, return an empty array [].
