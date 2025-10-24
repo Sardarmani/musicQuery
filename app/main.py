@@ -384,10 +384,8 @@ async def run_query(request: Request, query: str = Form(...), worksheet: Optiona
     return HTMLResponse(html)
 
 @app.post("/download")
-async def download_csv(query: str = Form(...), worksheet: Optional[str] = Form(None), current_user = Depends(get_current_user)):
-    # Check if current_user is a RedirectResponse (authentication failed)
-    if isinstance(current_user, RedirectResponse):
-        return current_user
+async def download_csv(query: str = Form(...), worksheet: Optional[str] = Form(None)):
+    # No authentication needed - direct access
     
     # Use the same logic as the main query endpoint
     worksheet_names = sheets_client.list_worksheets(settings.google_sheet_id)
@@ -517,10 +515,8 @@ async def download_csv(query: str = Form(...), worksheet: Optional[str] = Form(N
 
 # Excel export
 @app.post("/download-xlsx")
-async def download_xlsx(query: str = Form(...), worksheet: Optional[str] = Form(None), current_user = Depends(get_current_user)):
-    # Check if current_user is a RedirectResponse (authentication failed)
-    if isinstance(current_user, RedirectResponse):
-        return current_user
+async def download_xlsx(query: str = Form(...), worksheet: Optional[str] = Form(None)):
+    # No authentication needed - direct access
     
     spec: NLQuerySpec = translator.translate(
         user_query=query,
@@ -576,10 +572,8 @@ class AddContactRequest(BaseModel):
     query: str
 
 @app.post("/add_contact")
-async def add_contact(data: AddContactRequest, current_user = Depends(get_current_user)):
-    # Check if current_user is a RedirectResponse (authentication failed)
-    if isinstance(current_user, RedirectResponse):
-        return current_user
+async def add_contact(data: AddContactRequest):
+    # No authentication needed - direct access
     
     text = data.query
     fields = extract_contact_fields(translator, text)
