@@ -99,6 +99,15 @@ def get_current_user(request: Request):
     
     return active_sessions[session_id]
 
+def check_auth(request: Request):
+    """Check if user is authenticated, return username or None."""
+    session_id = request.cookies.get("session_id")
+    
+    if not session_id or session_id not in active_sessions:
+        return None
+    
+    return active_sessions[session_id]
+
 class QueryRequest(BaseModel):
     query: str
     worksheet: Optional[str] = None
@@ -194,10 +203,11 @@ async def change_password_page():
     return HTMLResponse(html)
 
 @app.get("/", response_class=HTMLResponse)
-async def index(request: Request, current_user = Depends(get_current_user)):
-    # Check if current_user is a RedirectResponse (authentication failed)
-    if isinstance(current_user, RedirectResponse):
-        return current_user
+async def index(request: Request):
+    # Manual authentication check
+    user = check_auth(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
     
     worksheet_names = sheets_client.list_worksheets(settings.google_sheet_id)
     template = jinja_env.get_template("index.html")
@@ -205,14 +215,15 @@ async def index(request: Request, current_user = Depends(get_current_user)):
     return HTMLResponse(html)
 
 @app.post("/smart-search", response_class=HTMLResponse)
-async def smart_search(request: Request, query: str = Form(...), worksheet: Optional[str] = Form(None), current_user = Depends(get_current_user)):
+async def smart_search(request: Request, query: str = Form(...), worksheet: Optional[str] = Form(None)):
     """
     GPT-powered smart search that analyzes data structure first, then uses GPT to understand user intent.
     This provides much more accurate results by understanding the actual data structure.
     """
-    # Check if current_user is a RedirectResponse (authentication failed)
-    if isinstance(current_user, RedirectResponse):
-        return current_user
+    # Manual authentication check
+    user = check_auth(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
     
     worksheet_names = sheets_client.list_worksheets(settings.google_sheet_id)
     result_df = None
@@ -289,10 +300,11 @@ async def smart_search(request: Request, query: str = Form(...), worksheet: Opti
     return HTMLResponse(html)
 
 @app.post("/query", response_class=HTMLResponse)
-async def run_query(request: Request, query: str = Form(...), worksheet: Optional[str] = Form(None), current_user = Depends(get_current_user)):
-    # Check if current_user is a RedirectResponse (authentication failed)
-    if isinstance(current_user, RedirectResponse):
-        return current_user
+async def run_query(request: Request, query: str = Form(...), worksheet: Optional[str] = Form(None)):
+    # Manual authentication check
+    user = check_auth(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
     
     worksheet_names = sheets_client.list_worksheets(settings.google_sheet_id)
     result_df = None

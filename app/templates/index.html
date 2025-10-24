@@ -95,18 +95,8 @@
   </div>
 
   <script>
-    // Simple session-based authentication
-    function getCookie(name) {
-      const value = `; ${document.cookie}`;
-      const parts = value.split(`; ${name}=`);
-      if (parts.length === 2) return parts.pop().split(';').shift();
-    }
-    const sessionId = getCookie('session_id');
-    const hasSession = document.cookie.includes('session_id=');
-    
-    if (!sessionId && !hasSession) {
-      window.location.href = '/login';
-    }
+    // Remove client-side authentication check - let server handle it
+    // This prevents the infinite redirect loop
 
     // Logout functionality
     document.getElementById('logoutBtn').addEventListener('click', async () => {
@@ -116,11 +106,9 @@
         });
       } catch (err) {
         console.error('Logout error:', err);
-      } finally {
-        // Clear session cookie
-        document.cookie = 'session_id=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
-        window.location.href = '/login';
       }
+      // Always redirect to login after logout attempt
+      window.location.href = '/login';
     });
 
     // Add contact functionality
@@ -146,12 +134,6 @@
           body: JSON.stringify({ query: text })
         });
         if (!res.ok) {
-          if (res.status === 401) {
-            // Clear session cookie
-            document.cookie = 'session_id=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
-            window.location.href = '/login';
-            return;
-          }
           const t = await res.text();
           throw new Error(t || 'Request failed');
         }
@@ -180,13 +162,6 @@
               method: 'POST',
               body: formData
             });
-            
-            if (response.status === 401) {
-              // Clear session cookie
-              document.cookie = 'session_id=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
-              window.location.href = '/login';
-              return;
-            }
             
             if (form.action.includes('/download')) {
               const blob = await response.blob();
