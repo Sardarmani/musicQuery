@@ -96,7 +96,13 @@
 
   <script>
     // Authentication handling - check both localStorage and cookies
-    const token = localStorage.getItem('access_token');
+    // Get token from cookie instead of localStorage
+    function getCookie(name) {
+      const value = `; ${document.cookie}`;
+      const parts = value.split(`; ${name}=`);
+      if (parts.length === 2) return parts.pop().split(';').shift();
+    }
+    const token = getCookie('access_token');
     const hasCookie = document.cookie.includes('access_token=');
     
     if (!token && !hasCookie) {
@@ -115,7 +121,8 @@
       } catch (err) {
         console.error('Logout error:', err);
       } finally {
-        localStorage.removeItem('access_token');
+        // Clear cookie by setting it to expire
+        document.cookie = 'access_token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
         window.location.href = '/login';
       }
     });
@@ -145,7 +152,8 @@
         });
         if (!res.ok) {
           if (res.status === 401) {
-            localStorage.removeItem('access_token');
+            // Clear cookie by setting it to expire
+            document.cookie = 'access_token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
             window.location.href = '/login';
             return;
           }
@@ -182,7 +190,8 @@
             });
             
             if (response.status === 401) {
-              localStorage.removeItem('access_token');
+              // Clear cookie by setting it to expire
+              document.cookie = 'access_token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
               window.location.href = '/login';
               return;
             }

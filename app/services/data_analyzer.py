@@ -70,7 +70,8 @@ class DataStructureAnalyzer:
             'total_rows': len(df),
             'total_columns': len(df.columns),
             'columns': column_analysis,
-            'sample_data': sample_data
+            'sample_data': sample_data,
+            'dataframe': df  # Include the full DataFrame for direct GPT approach
         }
     
     def _analyze_column_type(self, col_name: str, col_data: pd.Series) -> str:
@@ -118,61 +119,47 @@ class DataStructureAnalyzer:
     
     def get_gpt_query_analysis(self, user_query: str, data_structure: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Generic query flow: Send column names + sample rows to GPT-5 for data extraction.
-        
-        Args:
-            user_query: User's search query
-            data_structure: Analyzed data structure with sample data
-            
-        Returns:
-            Dictionary with GPT analysis and search recommendations
+        Direct OpenAI approach: Send ALL sheet data + user query to GPT-5 and get filtered results.
+        This is much simpler and more effective than complex filtering logic.
         """
         if not self.client:
             return self._fallback_analysis(user_query, data_structure)
         
         try:
-            # Get column names and sample data
-            sample_data = data_structure.get('sample_data', [])[:6]  # Take first 6 rows
-            columns = list(data_structure.get('columns', {}).keys())
-            
-            if not sample_data or not columns:
+            # Get ALL the data from the worksheet
+            df = data_structure.get('dataframe')
+            if df is None or df.empty:
                 return self._fallback_analysis(user_query, data_structure)
             
-            system_prompt = """You are a data extraction expert. I will give you:
-1. Column names from a database
-2. Sample data (first 6 rows)
-3. A user query
+            # Convert ALL data to JSON for GPT
+            all_data = df.to_dict('records')
+            
+            system_prompt = """You are a data analysis expert. I will give you:
+1. ALL the data from a database/spreadsheet
+2. A user query
 
-Your job is to tell me EXACTLY how to extract the data the user wants.
+Your job is to analyze the data and return ONLY the rows that match the user's query.
 
-Look at the column names and sample data, then tell me:
-1. Which column(s) to search in
-2. What to search for
-3. How to search (exact match, contains, etc.)
+Return ONLY a JSON array of matching records. Each record should be a complete object with all fields.
 
-Return ONLY a JSON response with this format:
-{
-  "search_column": "exact_column_name_from_columns",
-  "search_value": "what_to_search_for",
-  "search_type": "exact" or "contains"
-}
+Example response format:
+[
+  {"Name": "John Smith", "Country": "UK", "Event": "Festival", "Month": "August"},
+  {"Name": "Jane Doe", "Country": "UK", "Event": "Club", "Month": "September"}
+]
 
-Be very specific and use the EXACT column names provided."""
+Be precise and only return records that actually match the user's query."""
 
-            user_prompt = f"""COLUMN NAMES:
-{json.dumps(columns, indent=2)}
-
-SAMPLE DATA (first 6 rows):
-{json.dumps(sample_data, indent=2)}
+            user_prompt = f"""ALL DATA FROM THE DATABASE:
+{json.dumps(all_data, indent=2)}
 
 USER QUERY: "{user_query}"
 
-From the column names and sample data above, tell me EXACTLY how to extract the data the user wants.
-Look at the column names to see what data is available.
-Look at the sample data to see what the data looks like.
-Then tell me which column to search and what to search for.
+From the data above, find and return ONLY the records that match the user's query.
+Return a JSON array of matching records with all fields included.
+If no records match, return an empty array [].
 
-Return ONLY the JSON response."""
+Return ONLY the JSON array, no other text."""
 
             response = self.client.chat.completions.create(
                 model="gpt-5",  # Using GPT-5 as requested
@@ -180,15 +167,37 @@ Return ONLY the JSON response."""
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
                 ],
-                max_completion_tokens=500
+                max_completion_tokens=4000  # More tokens for large datasets
             )
             
             result = response.choices[0].message.content
-            return self._parse_simple_gpt_response(result)
+            return self._parse_direct_gpt_response(result)
             
         except Exception as e:
             logger.error(f"GPT analysis failed: {e}")
             return self._fallback_analysis(user_query, data_structure)
+    
+    def _parse_direct_gpt_response(self, response: str) -> Dict[str, Any]:
+        """Parse direct GPT response that returns filtered data."""
+        try:
+            # Extract JSON array from response
+            import re
+            json_match = re.search(r'\[.*\]', response, re.DOTALL)
+            if json_match:
+                json_str = json_match.group(0)
+                filtered_data = json.loads(json_str)
+                
+                return {
+                    'intent': 'Direct GPT filtering',
+                    'search_strategy': 'direct_gpt',
+                    'filtered_data': filtered_data,
+                    'return_full_rows': True,
+                    'confidence': 0.95
+                }
+            else:
+                return self._fallback_analysis("", {})
+        except Exception:
+            return self._fallback_analysis("", {})
     
     def _parse_simple_gpt_response(self, response: str) -> Dict[str, Any]:
         """Parse simple GPT response into structured data."""
@@ -314,10 +323,10 @@ Return ONLY the JSON response."""
     
     def apply_gpt_analysis(self, df: pd.DataFrame, analysis: Dict[str, Any]) -> pd.DataFrame:
         """
-        Apply GPT analysis to filter and return full matching rows with enhanced precision.
+        Apply GPT analysis - now handles direct GPT filtering results.
         
         Args:
-            df: DataFrame to search
+            df: DataFrame to search (not used for direct GPT approach)
             analysis: GPT analysis results
             
         Returns:
@@ -326,6 +335,17 @@ Return ONLY the JSON response."""
         if df is None or df.empty:
             return df
         
+        # Check if this is direct GPT filtering
+        if analysis.get('search_strategy') == 'direct_gpt':
+            filtered_data = analysis.get('filtered_data', [])
+            if filtered_data:
+                # Convert filtered data back to DataFrame
+                return pd.DataFrame(filtered_data)
+            else:
+                # Return empty DataFrame if no matches
+                return pd.DataFrame()
+        
+        # Fallback to old filtering logic for backward compatibility
         result_df = df.copy()
         
         # Apply filters with enhanced precision
