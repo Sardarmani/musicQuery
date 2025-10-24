@@ -18,7 +18,6 @@
       <div class="user-info">
         <span class="user-badge">👤 Owner</span>
         <a href="/change-password" class="change-password-link">Change Password</a>
-        <button id="logoutBtn" class="logout-btn">Logout</button>
       </div>
     </div>
 
@@ -95,21 +94,7 @@
   </div>
 
   <script>
-    // Remove client-side authentication check - let server handle it
-    // This prevents the infinite redirect loop
-
-    // Logout functionality
-    document.getElementById('logoutBtn').addEventListener('click', async () => {
-      try {
-        await fetch('/logout', {
-          method: 'POST'
-        });
-      } catch (err) {
-        console.error('Logout error:', err);
-      }
-      // Always redirect to login after logout attempt
-      window.location.href = '/login';
-    });
+    // No authentication needed - direct access to all features
 
     // Add contact functionality
     const btn = document.getElementById('addContactBtn');

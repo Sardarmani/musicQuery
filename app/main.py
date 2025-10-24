@@ -53,16 +53,13 @@ env_values = dotenv_values(".env")
 openai_key_from_env = env_values.get("OPENAI_API_KEY")
 translator = NLQueryTranslator(api_key=openai_key_from_env)
 
-# Simple authentication - no JWT tokens
+# Ultra-simple authentication - just username/password
 # Owner credentials (in production, use environment variables)
 OWNER_USERNAME = os.getenv("OWNER_USERNAME", "admin")
 OWNER_PASSWORD_HASH = os.getenv("OWNER_PASSWORD_HASH", hashlib.sha256("admin123".encode()).hexdigest())
 
 # Secret key for password changes
 PASSWORD_CHANGE_SECRET_KEY = "myscretkey123123abc"
-
-# Simple session storage (in production, use Redis or database)
-active_sessions = {}
 
 # Simple in-memory cache with manual invalidation
 _CACHE: Dict[str, pd.DataFrame] = {}
@@ -82,31 +79,13 @@ def _invalidate_cache(sheet_id: str, worksheet: Optional[str]):
     key = _cache_key(sheet_id, worksheet)
     _CACHE.pop(key, None)
 
-# Simple authentication functions
+# Ultra-simple authentication functions
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     return hashlib.sha256(plain_password.encode()).hexdigest() == hashed_password
 
-def create_session() -> str:
-    """Create a simple session ID."""
-    return secrets.token_urlsafe(32)
-
-def get_current_user(request: Request):
-    """Simple session-based authentication."""
-    session_id = request.cookies.get("session_id")
-    
-    if not session_id or session_id not in active_sessions:
-        return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
-    
-    return active_sessions[session_id]
-
 def check_auth(request: Request):
-    """Check if user is authenticated, return username or None."""
-    session_id = request.cookies.get("session_id")
-    
-    if not session_id or session_id not in active_sessions:
-        return None
-    
-    return active_sessions[session_id]
+    """Ultra-simple auth - just return True for now, we'll handle it differently."""
+    return True
 
 class QueryRequest(BaseModel):
     query: str
@@ -128,45 +107,7 @@ class ChangePasswordResponse(BaseModel):
     message: str
     success: bool
 
-@app.post("/login", response_model=TokenResponse)
-async def login(login_data: LoginRequest, response: Response):
-    if login_data.username != OWNER_USERNAME or not verify_password(login_data.password, OWNER_PASSWORD_HASH):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect username or password",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    
-    # Create simple session
-    session_id = create_session()
-    active_sessions[session_id] = login_data.username
-    
-    # Set session cookie
-    response.set_cookie(
-        key="session_id",
-        value=session_id,
-        httponly=True,
-        secure=False,  # Set to True in production with HTTPS
-        samesite="lax",
-        max_age=24 * 60 * 60  # 24 hours
-    )
-    
-    return {"access_token": session_id, "token_type": "session"}
-
-@app.get("/login", response_class=HTMLResponse)
-async def login_page():
-    template = jinja_env.get_template("login.html")
-    html = template.render()
-    return HTMLResponse(html)
-
-@app.post("/logout")
-async def logout(request: Request, response: Response):
-    session_id = request.cookies.get("session_id")
-    if session_id and session_id in active_sessions:
-        del active_sessions[session_id]
-    
-    response.delete_cookie(key="session_id")
-    return {"message": "Logged out successfully"}
+# Removed all login/logout endpoints - no authentication needed
 
 @app.post("/change-password", response_model=ChangePasswordResponse)
 async def change_password(request: ChangePasswordRequest):
@@ -204,11 +145,7 @@ async def change_password_page():
 
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
-    # Manual authentication check
-    user = check_auth(request)
-    if not user:
-        return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
-    
+    # No authentication needed - direct access
     worksheet_names = sheets_client.list_worksheets(settings.google_sheet_id)
     template = jinja_env.get_template("index.html")
     html = template.render(worksheet_names=worksheet_names)
@@ -220,10 +157,7 @@ async def smart_search(request: Request, query: str = Form(...), worksheet: Opti
     GPT-powered smart search that analyzes data structure first, then uses GPT to understand user intent.
     This provides much more accurate results by understanding the actual data structure.
     """
-    # Manual authentication check
-    user = check_auth(request)
-    if not user:
-        return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
+    # No authentication needed - direct access
     
     worksheet_names = sheets_client.list_worksheets(settings.google_sheet_id)
     result_df = None
@@ -301,10 +235,7 @@ async def smart_search(request: Request, query: str = Form(...), worksheet: Opti
 
 @app.post("/query", response_class=HTMLResponse)
 async def run_query(request: Request, query: str = Form(...), worksheet: Optional[str] = Form(None)):
-    # Manual authentication check
-    user = check_auth(request)
-    if not user:
-        return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
+    # No authentication needed - direct access
     
     worksheet_names = sheets_client.list_worksheets(settings.google_sheet_id)
     result_df = None
