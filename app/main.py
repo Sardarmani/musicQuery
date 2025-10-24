@@ -7,13 +7,13 @@ import hashlib
 from fastapi import FastAPI, Request, Form, Header, HTTPException, Depends, status
 from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+# Removed JWT security imports
 from pydantic import BaseModel
 from dotenv import load_dotenv
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 import io
 import pandas as pd
-import jwt
+# Removed JWT import
 
 from .core.config import get_settings
 from .services.sheets import GoogleSheetsClient
@@ -53,11 +53,7 @@ env_values = dotenv_values(".env")
 openai_key_from_env = env_values.get("OPENAI_API_KEY")
 translator = NLQueryTranslator(api_key=openai_key_from_env)
 
-# Authentication configuration
-JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", secrets.token_urlsafe(32))
-JWT_ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 24 * 60  # 24 hours
-
+# Simple authentication - no JWT tokens
 # Owner credentials (in production, use environment variables)
 OWNER_USERNAME = os.getenv("OWNER_USERNAME", "admin")
 OWNER_PASSWORD_HASH = os.getenv("OWNER_PASSWORD_HASH", hashlib.sha256("admin123".encode()).hexdigest())
@@ -65,7 +61,8 @@ OWNER_PASSWORD_HASH = os.getenv("OWNER_PASSWORD_HASH", hashlib.sha256("admin123"
 # Secret key for password changes
 PASSWORD_CHANGE_SECRET_KEY = "myscretkey123123abc"
 
-security = HTTPBearer(auto_error=False)
+# Simple session storage (in production, use Redis or database)
+active_sessions = {}
 
 # Simple in-memory cache with manual invalidation
 _CACHE: Dict[str, pd.DataFrame] = {}
@@ -85,49 +82,22 @@ def _invalidate_cache(sheet_id: str, worksheet: Optional[str]):
     key = _cache_key(sheet_id, worksheet)
     _CACHE.pop(key, None)
 
-# Authentication functions
-def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
-    to_encode = data.copy()
-    if expires_delta:
-        expire = datetime.utcnow() + expires_delta
-    else:
-        expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    to_encode.update({"exp": expire})
-    encoded_jwt = jwt.encode(to_encode, JWT_SECRET_KEY, algorithm=JWT_ALGORITHM)
-    return encoded_jwt
-
-def verify_token(token: str):
-    try:
-        payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
-        username: str = payload.get("sub")
-        if username is None:
-            return None
-        return username
-    except jwt.PyJWTError:
-        return None
-
-def get_current_user(request: Request, credentials: HTTPAuthorizationCredentials = Depends(security)):
-    token = None
-    
-    # First try to get token from Authorization header
-    if credentials:
-        token = credentials.credentials
-    else:
-        # Try to get token from cookie
-        token = request.cookies.get("access_token")
-    
-    if not token:
-        # Redirect to login page instead of raising exception
-        return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
-    
-    username = verify_token(token)
-    if username is None:
-        # Redirect to login page instead of raising exception
-        return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
-    return username
-
+# Simple authentication functions
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     return hashlib.sha256(plain_password.encode()).hexdigest() == hashed_password
+
+def create_session() -> str:
+    """Create a simple session ID."""
+    return secrets.token_urlsafe(32)
+
+def get_current_user(request: Request):
+    """Simple session-based authentication."""
+    session_id = request.cookies.get("session_id")
+    
+    if not session_id or session_id not in active_sessions:
+        return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
+    
+    return active_sessions[session_id]
 
 class QueryRequest(BaseModel):
     query: str
@@ -157,22 +127,22 @@ async def login(login_data: LoginRequest, response: Response):
             detail="Incorrect username or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = create_access_token(
-        data={"sub": login_data.username}, expires_delta=access_token_expires
-    )
     
-    # Set HTTP-only cookie
+    # Create simple session
+    session_id = create_session()
+    active_sessions[session_id] = login_data.username
+    
+    # Set session cookie
     response.set_cookie(
-        key="access_token",
-        value=access_token,
+        key="session_id",
+        value=session_id,
         httponly=True,
         secure=False,  # Set to True in production with HTTPS
         samesite="lax",
-        max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60
+        max_age=24 * 60 * 60  # 24 hours
     )
     
-    return {"access_token": access_token, "token_type": "bearer"}
+    return {"access_token": session_id, "token_type": "session"}
 
 @app.get("/login", response_class=HTMLResponse)
 async def login_page():
@@ -181,8 +151,12 @@ async def login_page():
     return HTMLResponse(html)
 
 @app.post("/logout")
-async def logout(response: Response):
-    response.delete_cookie(key="access_token")
+async def logout(request: Request, response: Response):
+    session_id = request.cookies.get("session_id")
+    if session_id and session_id in active_sessions:
+        del active_sessions[session_id]
+    
+    response.delete_cookie(key="session_id")
     return {"message": "Logged out successfully"}
 
 @app.post("/change-password", response_model=ChangePasswordResponse)

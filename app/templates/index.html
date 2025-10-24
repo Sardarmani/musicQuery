@@ -95,17 +95,16 @@
   </div>
 
   <script>
-    // Authentication handling - check both localStorage and cookies
-    // Get token from cookie instead of localStorage
+    // Simple session-based authentication
     function getCookie(name) {
       const value = `; ${document.cookie}`;
       const parts = value.split(`; ${name}=`);
       if (parts.length === 2) return parts.pop().split(';').shift();
     }
-    const token = getCookie('access_token');
-    const hasCookie = document.cookie.includes('access_token=');
+    const sessionId = getCookie('session_id');
+    const hasSession = document.cookie.includes('session_id=');
     
-    if (!token && !hasCookie) {
+    if (!sessionId && !hasSession) {
       window.location.href = '/login';
     }
 
@@ -113,16 +112,13 @@
     document.getElementById('logoutBtn').addEventListener('click', async () => {
       try {
         await fetch('/logout', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
+          method: 'POST'
         });
       } catch (err) {
         console.error('Logout error:', err);
       } finally {
-        // Clear cookie by setting it to expire
-        document.cookie = 'access_token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+        // Clear session cookie
+        document.cookie = 'session_id=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
         window.location.href = '/login';
       }
     });
@@ -144,16 +140,15 @@
       try {
         const res = await fetch('/add_contact', {
           method: 'POST',
-          headers: { 
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
+          headers: {
+            'Content-Type': 'application/json'
           },
           body: JSON.stringify({ query: text })
         });
         if (!res.ok) {
           if (res.status === 401) {
-            // Clear cookie by setting it to expire
-            document.cookie = 'access_token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+            // Clear session cookie
+            document.cookie = 'session_id=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
             window.location.href = '/login';
             return;
           }
@@ -183,15 +178,12 @@
           try {
             const response = await fetch(form.action, {
               method: 'POST',
-              headers: {
-                'Authorization': `Bearer ${token}`
-              },
               body: formData
             });
             
             if (response.status === 401) {
-              // Clear cookie by setting it to expire
-              document.cookie = 'access_token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+              // Clear session cookie
+              document.cookie = 'session_id=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
               window.location.href = '/login';
               return;
             }
