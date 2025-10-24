@@ -138,26 +138,49 @@ class DataStructureAnalyzer:
 1. ALL the data from a database/spreadsheet
 2. A user query
 
-Your job is to analyze the data and return ONLY the rows that match the user's query.
+CRITICAL: You must match ALL variables mentioned in the user query. Do NOT ignore any part of the query.
 
-Return ONLY a JSON array of matching records. Each record should be a complete object with all fields.
+Examples:
+- Query "UK events in July" → Find records that have BOTH "UK" AND "July"
+- Query "Italian festivals in August" → Find records that have BOTH "Italian" AND "August"
+- Query "French clubs in September" → Find records that have BOTH "French" AND "September"
+
+IMPORTANT RULES:
+1. Look for ALL keywords in the user query
+2. A record must match ALL keywords to be included
+3. If a query mentions location AND time, the record must have BOTH
+4. If a query mentions country AND month, the record must have BOTH
+5. Be very strict about matching ALL variables
+
+Return ONLY a JSON array of records that match ALL the variables mentioned in the user query.
+If no records match ALL variables, return an empty array [].
 
 Example response format:
 [
-  {"Name": "John Smith", "Country": "UK", "Event": "Festival", "Month": "August"},
-  {"Name": "Jane Doe", "Country": "UK", "Event": "Club", "Month": "September"}
-]
-
-Be precise and only return records that actually match the user's query."""
+  {"Name": "John Smith", "Country": "UK", "Event": "Festival", "Month": "July"},
+  {"Name": "Jane Doe", "Country": "UK", "Event": "Club", "Month": "July"}
+]"""
 
             user_prompt = f"""ALL DATA FROM THE DATABASE:
 {json.dumps(all_data, indent=2)}
 
 USER QUERY: "{user_query}"
 
-From the data above, find and return ONLY the records that match the user's query.
-Return a JSON array of matching records with all fields included.
-If no records match, return an empty array [].
+TASK: Find records that match ALL variables mentioned in the user query.
+
+ANALYSIS REQUIRED:
+1. Identify ALL keywords in the user query (location, time, event type, etc.)
+2. Look for records that contain ALL of these keywords
+3. A record must match ALL keywords to be included in results
+4. Be very strict - if a record is missing ANY keyword, exclude it
+
+EXAMPLES:
+- Query "UK events in July" → Find records with BOTH "UK" AND "July"
+- Query "Italian festivals in August" → Find records with BOTH "Italian" AND "August"
+- Query "French clubs in September" → Find records with BOTH "French" AND "September"
+
+Return ONLY a JSON array of records that match ALL variables.
+If no records match ALL variables, return an empty array [].
 
 Return ONLY the JSON array, no other text."""
 
@@ -167,7 +190,7 @@ Return ONLY the JSON array, no other text."""
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
                 ],
-                max_completion_tokens=4000  # More tokens for large datasets
+                max_completion_tokens=6000  # More tokens for better analysis of large datasets
             )
             
             result = response.choices[0].message.content
