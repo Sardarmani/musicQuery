@@ -138,27 +138,29 @@ class DataStructureAnalyzer:
 1. ALL the data from a database/spreadsheet
 2. A user query
 
-CRITICAL: You must match ALL variables mentioned in the user query. Do NOT ignore any part of the query.
+CRITICAL: You must match ALL conditions mentioned in the user query. Do NOT ignore any part of the query.
 
 Examples:
 - Query "UK events in July" → Find records that have BOTH "UK" AND "July"
+- Query "Portugal events in July with LinkedIn" → Find records that have "Portugal" AND "July" AND actual LinkedIn data (not empty)
 - Query "Italian festivals in August" → Find records that have BOTH "Italian" AND "August"
-- Query "French clubs in September" → Find records that have BOTH "French" AND "September"
 
 IMPORTANT RULES:
-1. Look for ALL keywords in the user query
-2. A record must match ALL keywords to be included
+1. Look for ALL keywords/conditions in the user query
+2. A record must match ALL keywords/conditions to be included
 3. If a query mentions location AND time, the record must have BOTH
 4. If a query mentions country AND month, the record must have BOTH
-5. Be very strict about matching ALL variables
+5. If a query mentions LinkedIn, the record must have actual LinkedIn data (not empty/null)
+6. Be very strict about matching ALL conditions
+7. Check for actual data presence - don't include records with empty fields when specific data is requested
 
-Return ONLY a JSON array of records that match ALL the variables mentioned in the user query.
-If no records match ALL variables, return an empty array [].
+Return ONLY a JSON array of records that match ALL the conditions mentioned in the user query.
+If no records match ALL conditions, return an empty array [].
 
 Example response format:
 [
-  {"Name": "John Smith", "Country": "UK", "Event": "Festival", "Month": "July"},
-  {"Name": "Jane Doe", "Country": "UK", "Event": "Club", "Month": "July"}
+  {"Name": "John Smith", "Country": "Portugal", "Event": "Festival", "Month": "July", "LinkedIn": "linkedin.com/in/johnsmith"},
+  {"Name": "Jane Doe", "Country": "Portugal", "Event": "Club", "Month": "July", "LinkedIn": "linkedin.com/in/janedoe"}
 ]"""
 
             user_prompt = f"""ALL DATA FROM THE DATABASE:
@@ -166,21 +168,28 @@ Example response format:
 
 USER QUERY: "{user_query}"
 
-TASK: Find records that match ALL variables mentioned in the user query.
+TASK: Find records that match ALL conditions mentioned in the user query.
 
 ANALYSIS REQUIRED:
-1. Identify ALL keywords in the user query (location, time, event type, etc.)
-2. Look for records that contain ALL of these keywords
-3. A record must match ALL keywords to be included in results
-4. Be very strict - if a record is missing ANY keyword, exclude it
+1. Identify ALL conditions in the user query (location, time, event type, specific data fields, etc.)
+2. Look for records that contain ALL of these conditions
+3. A record must match ALL conditions to be included in results
+4. Be very strict - if a record is missing ANY condition, exclude it
+5. Check for actual data presence - if a query asks for specific data (like LinkedIn), the record must have actual data (not empty/null)
 
 EXAMPLES:
 - Query "UK events in July" → Find records with BOTH "UK" AND "July"
+- Query "Portugal events in July with LinkedIn" → Find records with "Portugal" AND "July" AND actual LinkedIn data
 - Query "Italian festivals in August" → Find records with BOTH "Italian" AND "August"
-- Query "French clubs in September" → Find records with BOTH "French" AND "September"
 
-Return ONLY a JSON array of records that match ALL variables.
-If no records match ALL variables, return an empty array [].
+DATA VALIDATION:
+- If query mentions LinkedIn, only include records with actual LinkedIn URLs/data
+- If query mentions email, only include records with actual email addresses
+- If query mentions phone, only include records with actual phone numbers
+- Never include records with empty/null values for requested specific data
+
+Return ONLY a JSON array of records that match ALL conditions.
+If no records match ALL conditions, return an empty array [].
 
 Return ONLY the JSON array, no other text."""
 
