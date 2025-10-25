@@ -79,12 +79,17 @@ def _invalidate_cache(sheet_id: str, worksheet: Optional[str]):
     key = _cache_key(sheet_id, worksheet)
     _CACHE.pop(key, None)
 
-# Ultra-simple authentication functions
+# Simple authentication functions
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     return hashlib.sha256(plain_password.encode()).hexdigest() == hashed_password
 
 def check_auth(request: Request):
-    """Ultra-simple auth - just return True for now, we'll handle it differently."""
+    """Check if user is authenticated by looking for session cookie."""
+    session_id = request.cookies.get("session_id")
+    if not session_id:
+        return False
+    # For simplicity, we'll just check if the session cookie exists
+    # In a real app, you'd validate the session
     return True
 
 class QueryRequest(BaseModel):
@@ -107,7 +112,33 @@ class ChangePasswordResponse(BaseModel):
     message: str
     success: bool
 
-# Removed all login/logout endpoints - no authentication needed
+# Login endpoint
+@app.post("/login")
+async def login(request: Request, username: str = Form(...), password: str = Form(...)):
+    """Simple login with hardcoded credentials."""
+    if username == OWNER_USERNAME and verify_password(password, OWNER_PASSWORD_HASH):
+        # Create a simple session by setting a cookie
+        response = RedirectResponse(url="/", status_code=302)
+        response.set_cookie(key="session_id", value="authenticated", httponly=True)
+        return response
+    else:
+        template = jinja_env.get_template("login.html")
+        html = template.render(error="Invalid username or password")
+        return HTMLResponse(html, status_code=401)
+
+@app.get("/login", response_class=HTMLResponse)
+async def login_page():
+    """Show login form."""
+    template = jinja_env.get_template("login.html")
+    html = template.render()
+    return HTMLResponse(html)
+
+@app.get("/logout")
+async def logout():
+    """Logout by clearing session cookie."""
+    response = RedirectResponse(url="/login", status_code=302)
+    response.delete_cookie(key="session_id")
+    return response
 
 @app.post("/change-password", response_model=ChangePasswordResponse)
 async def change_password(request: ChangePasswordRequest):
@@ -145,7 +176,10 @@ async def change_password_page():
 
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
-    # No authentication needed - direct access
+    # Check authentication
+    if not check_auth(request):
+        return RedirectResponse(url="/login", status_code=302)
+    
     worksheet_names = sheets_client.list_worksheets(settings.google_sheet_id)
     template = jinja_env.get_template("index.html")
     html = template.render(worksheet_names=worksheet_names)
@@ -153,6 +187,9 @@ async def index(request: Request):
 
 @app.post("/smart-search", response_class=HTMLResponse)
 async def smart_search(request: Request, query: str = Form(...), worksheet: Optional[str] = Form(None)):
+    # Check authentication
+    if not check_auth(request):
+        return RedirectResponse(url="/login", status_code=302)
     """
     GPT-powered smart search that analyzes data structure first, then uses GPT to understand user intent.
     This provides much more accurate results by understanding the actual data structure.
@@ -235,7 +272,9 @@ async def smart_search(request: Request, query: str = Form(...), worksheet: Opti
 
 @app.post("/query", response_class=HTMLResponse)
 async def run_query(request: Request, query: str = Form(...), worksheet: Optional[str] = Form(None)):
-    # No authentication needed - direct access
+    # Check authentication
+    if not check_auth(request):
+        return RedirectResponse(url="/login", status_code=302)
     
     worksheet_names = sheets_client.list_worksheets(settings.google_sheet_id)
     result_df = None
@@ -384,7 +423,10 @@ async def run_query(request: Request, query: str = Form(...), worksheet: Optiona
     return HTMLResponse(html)
 
 @app.post("/download")
-async def download_csv(query: str = Form(...), worksheet: Optional[str] = Form(None)):
+async def download_csv(request: Request, query: str = Form(...), worksheet: Optional[str] = Form(None)):
+    # Check authentication
+    if not check_auth(request):
+        return RedirectResponse(url="/login", status_code=302)
     # No authentication needed - direct access
     
     # Use the same logic as the main query endpoint
@@ -515,7 +557,10 @@ async def download_csv(query: str = Form(...), worksheet: Optional[str] = Form(N
 
 # Excel export
 @app.post("/download-xlsx")
-async def download_xlsx(query: str = Form(...), worksheet: Optional[str] = Form(None)):
+async def download_xlsx(request: Request, query: str = Form(...), worksheet: Optional[str] = Form(None)):
+    # Check authentication
+    if not check_auth(request):
+        return RedirectResponse(url="/login", status_code=302)
     # No authentication needed - direct access
     
     spec: NLQuerySpec = translator.translate(
@@ -572,8 +617,10 @@ class AddContactRequest(BaseModel):
     query: str
 
 @app.post("/add_contact")
-async def add_contact(data: AddContactRequest):
-    # No authentication needed - direct access
+async def add_contact(request: Request, data: AddContactRequest):
+    # Check authentication
+    if not check_auth(request):
+        return RedirectResponse(url="/login", status_code=302)
     
     text = data.query
     fields = extract_contact_fields(translator, text)

@@ -1,86 +1,101 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Login - Music Database</title>
-  <link rel="stylesheet" href="/static/style.css">
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Login - Sheets NL Dashboard</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <style>
+        .login-container {
+            max-width: 400px;
+            margin: 100px auto;
+            padding: 30px;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .login-form {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        .form-group label {
+            font-weight: bold;
+            color: #333;
+        }
+        .form-group input {
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            font-size: 16px;
+        }
+        .form-group input:focus {
+            outline: none;
+            border-color: #007bff;
+        }
+        .login-btn {
+            background: #007bff;
+            color: white;
+            padding: 12px;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+        .login-btn:hover {
+            background: #0056b3;
+        }
+        .change-password-link {
+            text-align: center;
+            margin-top: 20px;
+        }
+        .change-password-link a {
+            color: #007bff;
+            text-decoration: none;
+        }
+        .change-password-link a:hover {
+            text-decoration: underline;
+        }
+        .error-message {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+    </style>
 </head>
 <body>
-  <div class="container">
     <div class="login-container">
-      <h1>🔐 Owner Login</h1>
-      <p class="login-subtitle">Access the Music Industry Database</p>
-      
-      <form id="loginForm" class="login-form">
-        <div class="form-group">
-          <label for="username">Username</label>
-          <input type="text" id="username" name="username" required>
-        </div>
+        <h2 style="text-align: center; margin-bottom: 30px;">Login to Dashboard</h2>
         
-        <div class="form-group">
-          <label for="password">Password</label>
-          <input type="password" id="password" name="password" required>
-        </div>
+        {% if error %}
+        <div class="error-message">{{ error }}</div>
+        {% endif %}
         
-        <button type="submit" class="login-btn">
-          <span class="btn-icon">🔑</span>
-          Login
-        </button>
-      </form>
-      
-      <div id="loginMsg" class="msg" role="status" aria-live="polite"></div>
+        <form class="login-form" method="POST" action="/login">
+            <div class="form-group">
+                <label for="username">Username:</label>
+                <input type="text" id="username" name="username" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="password">Password:</label>
+                <input type="password" id="password" name="password" required>
+            </div>
+            
+            <button type="submit" class="login-btn">Login</button>
+        </form>
+        
+        <div class="change-password-link">
+            <a href="/change-password">Change Password</a>
+        </div>
     </div>
-  </div>
-
-  <script>
-    const form = document.getElementById('loginForm');
-    const msg = document.getElementById('loginMsg');
-
-    form.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      
-      const username = document.getElementById('username').value;
-      const password = document.getElementById('password').value;
-      
-      msg.textContent = 'Logging in...';
-      msg.className = 'msg info';
-      
-      try {
-        const response = await fetch('/login', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ username, password })
-        });
-        
-        if (response.ok) {
-          const data = await response.json();
-          // Store token in localStorage for API calls
-          localStorage.setItem('access_token', data.access_token);
-          msg.textContent = 'Login successful! Redirecting...';
-          msg.className = 'msg success';
-          
-          // Redirect to main page
-          setTimeout(() => {
-            window.location.href = '/';
-          }, 1000);
-        } else {
-          const error = await response.json();
-          msg.textContent = 'Login failed: ' + (error.detail || 'Invalid credentials');
-          msg.className = 'msg error';
-        }
-      } catch (err) {
-        msg.textContent = 'Error: ' + (err.message || 'Login failed');
-        msg.className = 'msg error';
-      }
-    });
-
-    // Check if already logged in
-    if (localStorage.getItem('access_token')) {
-      window.location.href = '/';
-    }
-  </script>
 </body>
 </html>

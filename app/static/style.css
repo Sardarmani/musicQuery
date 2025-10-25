@@ -83,6 +83,22 @@ h1 {
   transform: translateY(-1px);
 }
 
+.logout-link {
+  background: linear-gradient(135deg, #e53e3e, #c53030);
+  color: white;
+  text-decoration: none;
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  transition: all 0.3s ease;
+}
+
+.logout-link:hover {
+  background: linear-gradient(135deg, #c53030, #9c2626);
+  transform: translateY(-1px);
+}
+
 .source-link { 
   margin: 20px 0 30px; 
   text-align: center; 

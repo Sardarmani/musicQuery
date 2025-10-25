@@ -1,44 +1,76 @@
 import json
 import logging
-from typing import Dict, Any, Optional
+import re
+import time
+from typing import Dict, Any, List, Optional
+
 import pandas as pd
 from openai import OpenAI
 
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 class DataStructureAnalyzer:
-    def __init__(self):
-        self.client = None
-        try:
-            from dotenv import dotenv_values
-            env_values = dotenv_values(".env")
-            api_key = env_values.get("OPENAI_API_KEY")
+    def __init__(self, api_key: Optional[str] = None):
+        if api_key:
+            self.client = OpenAI(api_key=api_key)
+            print(f"✅ OpenAI client initialized with API key")
+        else:
+            # Try to get API key from environment
+            import os
+            api_key = os.getenv('OPENAI_API_KEY')
             if api_key:
                 self.client = OpenAI(api_key=api_key)
-        except Exception as e:
-            logger.error(f"Failed to initialize OpenAI client: {e}")
+                print(f"✅ OpenAI client initialized from environment")
+            else:
+                self.client = None
+                print(f"❌ No OpenAI API key found")
 
     def analyze_data_structure(self, df: pd.DataFrame, worksheet_name: str) -> Dict[str, Any]:
-        """Simple data structure analysis - just return the DataFrame."""
+        """
+        Analyzes the structure of a DataFrame, including column types and sample data.
+        Includes the full DataFrame for direct GPT processing.
+        """
         if df is None or df.empty:
             return {}
-        
+
+        sample_data = df.head(6).to_dict('records') # Get exactly 6 sample rows
+
+        column_analysis = {}
+        for col in df.columns:
+            col_data = df[col].dropna()
+            sample_values = col_data.sample(min(5, len(col_data))).tolist() if not col_data.empty else []
+            column_analysis[col] = {
+                'type': str(df[col].dtype),
+                'sample_values': sample_values,
+                'non_null_count': len(col_data),
+                'total_count': len(df),
+                'completeness': len(col_data) / len(df) if len(df) > 0 else 0
+            }
+
         return {
             'worksheet_name': worksheet_name,
             'total_rows': len(df),
             'total_columns': len(df.columns),
+            'columns': column_analysis,
+            'sample_data': sample_data,
             'dataframe': df  # Include the full DataFrame for direct GPT approach
         }
 
     def get_gpt_query_analysis(self, user_query: str, data_structure: Dict[str, Any]) -> Dict[str, Any]:
         """
-        ENHANCED: Send ALL sheet data + user query to GPT-5 Pro with context handling.
+        SMART APPROACH: First understand data structure, then apply filters.
         """
+        print("🚀 ENTERING SMART GPT QUERY ANALYSIS...")
+        print(f"📝 User query: {user_query}")
+        print(f"🔑 Client available: {self.client is not None}")
+        
         if not self.client:
+            print("❌ No OpenAI client, using fallback")
             return self._fallback_analysis(user_query, data_structure)
         
         try:
-            # Get ALL the data from the worksheet
+            # Get the data from the worksheet
             df = data_structure.get('dataframe')
             if df is None or df.empty:
                 return self._fallback_analysis(user_query, data_structure)
@@ -46,37 +78,95 @@ class DataStructureAnalyzer:
             print(f"📊 DATASET INFO: {len(df)} rows, {len(df.columns)} columns")
             print(f"📋 COLUMNS: {list(df.columns)}")
             
-            # Convert ALL data to JSON for GPT
-            all_data = df.to_dict('records')
+            # STEP 1: Send sample data to GPT to understand structure and get filtering strategy
+            sample_data = df.head(20).to_dict('records')  # First 20 rows for structure understanding
             
-            # Check data size and handle context limitations
-            data_json = json.dumps(all_data, indent=2)
-            data_size = len(data_json)
-            print(f"📏 DATA SIZE: {data_size:,} characters")
-            
-            # If data is too large, we might need to chunk it
-            if data_size > 100000:  # 100k characters limit
-                print("⚠️  Large dataset detected, using first 1000 rows for analysis")
-                all_data = df.head(1000).to_dict('records')
-                data_json = json.dumps(all_data, indent=2)
-                print(f"📏 REDUCED DATA SIZE: {len(data_json):,} characters")
-            
-            # ENHANCED SYSTEM PROMPT FOR CLIENT QUERIES
-            system_prompt = """You are a data filtering expert. I will give you:
-1. ALL the data from a database/spreadsheet
+            structure_prompt = f"""You are a data analysis expert. I will give you:
+1. Sample data from a spreadsheet (first 20 rows)
 2. A user query
 
-CRITICAL: You must FILTER the data and return ONLY records that match ALL conditions in the user query.
+TASK: Analyze the data structure and create a filtering strategy.
 
-CLIENT QUERY PATTERNS - BE VERY STRICT:
-- "French contacts with name containing M" → ONLY French records where Name field contains "M"
-- "Irish DJs" → ONLY Irish records where Type/Job field contains "DJ"
-- "Portuguese festivals in July with LinkedIn" → ONLY Portuguese festival records in July WITH LinkedIn data
-- "Media with high Instagram followers" → ONLY records with high Instagram follower counts
+SAMPLE DATA:
+{json.dumps(sample_data, indent=2)}
 
-FILTERING RULES:
-- "French" = Country field contains "France" or "French"
-- "Irish" = Country field contains "Ireland" or "Irish"  
+USER QUERY: "{user_query}"
+
+ANALYZE:
+1. What columns are available in this dataset?
+2. What does the user query want to find?
+3. What filters should be applied to get the correct results?
+4. Are there any specific patterns in the data I should be aware of?
+
+Return your analysis as JSON with this structure:
+{{
+  "columns_available": ["list", "of", "columns"],
+  "query_intent": "what the user wants",
+  "filtering_strategy": "how to filter the data",
+  "key_fields": ["most", "important", "fields"],
+  "data_patterns": "any patterns you notice"
+}}"""
+
+            print("=" * 80)
+            print("STEP 1: ANALYZING DATA STRUCTURE...")
+            print("=" * 80)
+            print("🔍 SAMPLE DATA BEING SENT TO GPT:")
+            print(f"📊 Sample size: {len(sample_data)} rows")
+            print(f"📋 Sample data: {json.dumps(sample_data[:3], indent=2)}...")  # Show first 3 rows
+            print("=" * 80)
+            print("🤖 GPT STRUCTURE PROMPT:")
+            print(structure_prompt)
+            print("=" * 80)
+            print("🚀 SENDING TO GPT-5 FOR STRUCTURE ANALYSIS...")
+            
+            structure_response = self.client.chat.completions.create(
+                model="gpt-5",
+                messages=[
+                    {"role": "system", "content": "You are a data analysis expert. Analyze the data structure and provide filtering strategy."},
+                    {"role": "user", "content": structure_prompt}
+                ],
+                max_completion_tokens=1000
+            )
+            
+            structure_analysis = structure_response.choices[0].message.content
+            print("✅ GPT STRUCTURE ANALYSIS RESPONSE:")
+            print(structure_analysis)
+            print("=" * 80)
+            
+            # STEP 2: Apply the filtering strategy to get the actual results
+            # Get a larger sample for filtering (but still manageable)
+            filter_sample_size = min(200, len(df))
+            filter_data = df.head(filter_sample_size).to_dict('records')
+            
+            print(f"STEP 2: APPLYING FILTERS TO {filter_sample_size} ROWS...")
+            print("=" * 80)
+            print("🔍 FILTER DATA BEING SENT TO GPT:")
+            print(f"📊 Filter data size: {len(filter_data)} rows")
+            print(f"📋 Sample filter data: {json.dumps(filter_data[:3], indent=2)}...")  # Show first 3 rows
+            print("=" * 80)
+            
+            # STEP 2: Apply smart filtering based on structure analysis
+            filtering_prompt = f"""You are a data filtering expert. Based on the structure analysis, filter the data.
+
+DATA TO FILTER:
+{json.dumps(filter_data, indent=2)}
+
+USER QUERY: "{user_query}"
+
+STRUCTURE ANALYSIS FROM STEP 1:
+{structure_analysis}
+
+TASK: Apply the filtering strategy and return ONLY records that match the user query.
+
+FILTERING INSTRUCTIONS:
+1. Use the structure analysis to understand the data
+2. Apply ALL conditions from the user query
+3. Be very strict about matching criteria
+4. Return ONLY records that match ALL conditions
+
+IMPORTANT FILTERING RULES:
+- "Irish" = Country field contains "Ireland" or "Irish"
+- "French" = Country field contains "France" or "French"  
 - "Portuguese" = Country field contains "Portugal" or "Portuguese"
 - "Italian" = Country field contains "Italy" or "Italian"
 - "German" = Country field contains "Germany" or "German"
@@ -91,93 +181,55 @@ STRICT CONDITIONS:
 - "LinkedIn" → LinkedIn field must have actual data (not empty)
 - "high Instagram followers" → Instagram followers must be high numbers
 
-IMPORTANT: 
-- Do NOT return records with empty required fields
-- Do NOT return records with "?" in required fields
-- Do NOT return records that don't match ALL conditions
-- If no records match ALL conditions, return empty array []
-
-Return ONLY a JSON array of records that match ALL conditions. If no matches, return empty array [].
-
-Example for "French contacts with name containing M":
-[
-  {"Name": "Martin", "Country": "France", "Email": "martin@email.com"},
-  {"Name": "Marie", "Country": "France, Paris", "Email": "marie@email.com"}
-]"""
-
-            # ENHANCED USER PROMPT FOR CLIENT QUERIES
-            user_prompt = f"""DATA:
-{json.dumps(all_data, indent=2)}
-
-QUERY: "{user_query}"
-
-TASK: Filter the data and return ONLY records that match ALL conditions in the query.
-
-FILTERING INSTRUCTIONS FOR CLIENT QUERIES:
-- "French contacts with name containing M" → Find French records where Name contains "M"
-- "Irish DJs" → Find Irish records where Type/Job contains "DJ"
-- "Portuguese festivals in July with LinkedIn" → Find Portuguese festival records in July WITH LinkedIn
-- "Media with high Instagram followers" → Find records with high Instagram follower counts
-
-STRICT FILTERING RULES:
-- Look at ALL relevant fields (Country, Name, Type, Month, LinkedIn, Instagram followers, etc.)
-- If query mentions "French", ONLY include records where Country contains "France" or "French"
-- If query mentions "Irish", ONLY include records where Country contains "Ireland" or "Irish"
-- If query mentions "Portuguese", ONLY include records where Country contains "Portugal" or "Portuguese"
-- If query mentions "name contains M", ONLY include records where Name contains "M"
-- If query mentions "DJs", ONLY include records where Type/Job contains "DJ"
-- If query mentions "festivals", ONLY include records where Type/Event contains "festival"
-- If query mentions "July", ONLY include records where Month contains "July" or "07"
-- If query mentions "LinkedIn", ONLY include records with actual LinkedIn data
-- If query mentions "high Instagram followers", ONLY include records with high follower counts
-
 EXCLUSION RULES:
 - EXCLUDE records with empty required fields
 - EXCLUDE records with "?" in required fields
 - EXCLUDE records that don't match ALL conditions
 
-Return ONLY the JSON array of records that match ALL conditions. If no matches, return empty array []."""
+Return ONLY a JSON array of records that match ALL conditions. If no matches, return empty array []."""
 
+            print("🤖 GPT FILTERING PROMPT:")
+            print(filtering_prompt)
             print("=" * 80)
-            print("SYSTEM PROMPT:")
-            print(system_prompt)
-            print("=" * 80)
-            print("USER PROMPT:")
-            print(user_prompt)
-            print("=" * 80)
-            print("SENDING TO GPT-5 PRO...")
+            print("🚀 SENDING TO GPT-4O FOR FILTERING...")
             
             response = self.client.chat.completions.create(
-                model="gpt-5-pro",  # Upgraded to GPT-5 Pro
+                model="gpt-4o",
                 messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
+                    {"role": "system", "content": "You are a data filtering expert. Apply strict filtering based on user query and data structure analysis."},
+                    {"role": "user", "content": filtering_prompt}
                 ],
-                max_completion_tokens=6000
+                max_completion_tokens=4000
             )
             
             result = response.choices[0].message.content
-            print("GPT RESPONSE:")
+            print("✅ GPT FILTERING RESPONSE:")
             print(result)
             print("=" * 80)
-            
-            return self._parse_direct_gpt_response(result)
-            
+            print("🔍 PARSING GPT RESPONSE...")
+            parsed_result = self._parse_direct_gpt_response(result)
+            print(f"📊 PARSED RESULT: {parsed_result}")
+            print("=" * 80)
+            return parsed_result
+
         except Exception as e:
             logger.error(f"GPT analysis failed: {e}")
-            print(f"ERROR: {e}")
             return self._fallback_analysis(user_query, data_structure)
 
     def _parse_direct_gpt_response(self, response: str) -> Dict[str, Any]:
         """Parse direct GPT response that returns filtered data."""
+        print("🔍 PARSING GPT RESPONSE...")
+        print(f"📝 Raw response: {response[:500]}...")  # Show first 500 chars
+        
         try:
             # Extract JSON array from response
-            import re
             json_match = re.search(r'\[.*\]', response, re.DOTALL)
             if json_match:
                 json_str = json_match.group(0)
+                print(f"📋 Found JSON array: {json_str[:200]}...")  # Show first 200 chars
                 filtered_data = json.loads(json_str)
-                
+                print(f"✅ Successfully parsed {len(filtered_data)} records")
+
                 return {
                     'intent': 'Direct GPT filtering',
                     'search_strategy': 'direct_gpt',
@@ -186,15 +238,18 @@ Return ONLY the JSON array of records that match ALL conditions. If no matches, 
                     'confidence': 0.95
                 }
             else:
+                print("❌ No JSON array found in response")
                 return self._fallback_analysis("", {})
-        except Exception:
+        except Exception as e:
+            print(f"❌ Error parsing JSON: {e}")
             return self._fallback_analysis("", {})
 
     def _fallback_analysis(self, user_query: str, data_structure: Dict[str, Any]) -> Dict[str, Any]:
-        """Simple fallback when GPT is not available."""
+        """Enhanced fallback analysis when GPT is not available."""
+        # Simplified fallback for now
         return {
             'intent': f'Fallback search for {user_query}',
-            'search_strategy': 'fallback',
+            'search_strategy': 'enhanced',
             'filters': [],
             'return_full_rows': True,
             'confidence': 0.5
@@ -202,23 +257,37 @@ Return ONLY the JSON array of records that match ALL conditions. If no matches, 
 
     def apply_gpt_analysis(self, df: pd.DataFrame, analysis: Dict[str, Any]) -> pd.DataFrame:
         """
-        Apply GPT analysis - handles direct GPT filtering results.
+        Apply GPT analysis - now handles direct GPT filtering results.
         """
-        if df is None or df.empty:
-            return df
+        print("🔍 APPLYING GPT ANALYSIS...")
+        print(f"📊 Input DataFrame shape: {df.shape if df is not None else 'None'}")
+        print(f"📋 Analysis strategy: {analysis.get('search_strategy', 'unknown')}")
         
+        if df is None or df.empty:
+            print("❌ Input DataFrame is empty or None")
+            return df
+
         # Check if this is direct GPT filtering
         if analysis.get('search_strategy') == 'direct_gpt':
             filtered_data = analysis.get('filtered_data', [])
+            print(f"📊 Filtered data from GPT: {len(filtered_data)} records")
+            
             if filtered_data:
                 # Convert filtered data back to DataFrame
-                return pd.DataFrame(filtered_data)
+                result_df = pd.DataFrame(filtered_data)
+                print(f"✅ Successfully created DataFrame with {len(result_df)} rows")
+                print(f"📋 Result columns: {list(result_df.columns)}")
+                return result_df
             else:
                 # Return empty DataFrame if no matches
+                print("❌ No filtered data from GPT, returning empty DataFrame")
                 return pd.DataFrame()
-        
-        # Fallback to old filtering logic
-        return df
 
-# Global instance
-data_analyzer = DataStructureAnalyzer()
+        # Fallback to old filtering logic for backward compatibility (should not be reached with direct_gpt)
+        print("⚠️ Using fallback logic")
+        return pd.DataFrame() # Return empty if not direct_gpt
+
+# Global instance - try to get API key from environment
+import os
+api_key = os.getenv('OPENAI_API_KEY')
+data_analyzer = DataStructureAnalyzer(api_key=api_key)
