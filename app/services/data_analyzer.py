@@ -140,34 +140,46 @@ class DataStructureAnalyzer:
 
 CRITICAL: You must match ALL conditions mentioned in the user query EXACTLY. Do NOT ignore any part of the query.
 
-Examples:
-- Query "UK events in July" → Find records that have BOTH "UK" AND "July"
-- Query "Portugal events in July with LinkedIn" → Find records that have "Portugal" AND "July" AND actual LinkedIn data (not empty)
-- Query "Italian festivals in August" → Find records that have BOTH "Italian" AND "August"
+LOCATION VARIATIONS - IMPORTANT:
+- "Italian" matches "Italy", "Italy, Turin", "Italy, Milan", etc.
+- "French" matches "France", "France, Paris", "France, Lyon", etc.
+- "Portuguese" matches "Portugal", "Portugal, Lisbon", "Portugal, Porto", etc.
+- "Irish" matches "Ireland", "Ireland, Dublin", "Ireland, Cork", etc.
+- "German" matches "Germany", "Germany, Berlin", "Germany, Munich", etc.
+- "Spanish" matches "Spain", "Spain, Madrid", "Spain, Barcelona", etc.
+- "British" matches "UK", "United Kingdom", "England", "Scotland", "Wales", etc.
+
+COMPLEX QUERY PATTERNS:
+- "French contacts with name containing M" → Find French records where name has "M"
+- "Irish DJs" → Find Irish records where type is DJ
+- "Portuguese festivals in July with LinkedIn" → Find Portuguese festival records in July with LinkedIn data
+- "Media with high Instagram followers" → Find records with high Instagram follower counts
+- "French events with direct email addresses" → Find French events with specific email patterns (exclude info@, contact@, etc.)
 
 IMPORTANT RULES:
 1. Look for ALL keywords/conditions in the user query
 2. A record must match ALL keywords/conditions to be included
-3. If a query mentions location AND time, the record must have BOTH
-4. If a query mentions country AND month, the record must have BOTH
+3. Handle location variations (Italian = Italy, French = France, etc.)
+4. Handle partial matches in location fields (Italy, Turin = Italian)
 5. If a query mentions LinkedIn, the record must have actual LinkedIn data (not empty/null)
 6. Be VERY strict about matching ALL conditions
 7. Check for actual data presence - don't include records with empty fields when specific data is requested
-8. If query asks for "Portugal" events, ONLY include records from Portugal - exclude Ukraine, Italy, etc.
-9. If query asks for LinkedIn, ONLY include records that have actual LinkedIn data
+8. Handle name pattern matching (name contains M, etc.)
+9. Handle email pattern matching (exclude generic emails like info@)
 
 STRICT MATCHING EXAMPLES:
-- Query "Portugal events in July" → ONLY Portugal records in July (exclude Ukraine, Italy, etc.)
-- Query "Portugal events in July with LinkedIn" → ONLY Portugal records in July WITH LinkedIn data
-- Query "UK events in August" → ONLY UK records in August (exclude other countries)
+- Query "Italian events" → Include "Italy, Turin", "Italy, Milan", etc.
+- Query "French contacts with name containing M" → Include French records where name has "M"
+- Query "Portuguese festivals in July with LinkedIn" → Include Portugal records in July WITH LinkedIn data
+- Query "French events with direct email" → Include French events with specific emails (exclude info@)
 
 Return ONLY a JSON array of records that match ALL the conditions mentioned in the user query.
 If no records match ALL conditions, return an empty array [].
 
 Example response format:
 [
-  {"Name": "John Smith", "Country": "Portugal", "Event": "Festival", "Month": "July", "LinkedIn": "linkedin.com/in/johnsmith"},
-  {"Name": "Jane Doe", "Country": "Portugal", "Event": "Club", "Month": "July", "LinkedIn": "linkedin.com/in/janedoe"}
+  {"Name": "John Smith", "Country": "Italy, Turin", "Event": "Festival", "Month": "July", "LinkedIn": "linkedin.com/in/johnsmith"},
+  {"Name": "Jane Doe", "Country": "France, Paris", "Event": "Club", "Month": "July", "LinkedIn": "linkedin.com/in/janedoe"}
 ]"""
 
             user_prompt = f"""ALL DATA FROM THE DATABASE:
@@ -184,21 +196,35 @@ ANALYSIS REQUIRED:
 4. Be VERY strict - if a record is missing ANY condition, exclude it
 5. Check for actual data presence - if a query asks for specific data (like LinkedIn), the record must have actual data (not empty/null)
 
-EXAMPLES:
-- Query "UK events in July" → Find records with BOTH "UK" AND "July" (exclude other countries)
-- Query "Portugal events in July with LinkedIn" → Find records with "Portugal" AND "July" AND actual LinkedIn data (exclude Ukraine, Italy, etc.)
-- Query "Italian festivals in August" → Find records with BOTH "Italian" AND "August" (exclude other countries)
+LOCATION VARIATIONS - CRITICAL:
+- "Italian" matches "Italy", "Italy, Turin", "Italy, Milan", etc.
+- "French" matches "France", "France, Paris", "France, Lyon", etc.
+- "Portuguese" matches "Portugal", "Portugal, Lisbon", "Portugal, Porto", etc.
+- "Irish" matches "Ireland", "Ireland, Dublin", "Ireland, Cork", etc.
+- "German" matches "Germany", "Germany, Berlin", "Germany, Munich", etc.
+- "Spanish" matches "Spain", "Spain, Madrid", "Spain, Barcelona", etc.
+- "British" matches "UK", "United Kingdom", "England", "Scotland", "Wales", etc.
+
+CLIENT QUERY EXAMPLES:
+- "French contacts with name containing M" → Find French records where name has "M"
+- "Irish DJs" → Find Irish records where type is DJ
+- "Portuguese festivals in July with LinkedIn" → Find Portuguese festival records in July with LinkedIn data
+- "Media with high Instagram followers" → Find records with high Instagram follower counts
+- "French events with direct email addresses" → Find French events with specific email patterns (exclude info@, contact@, etc.)
 
 STRICT VALIDATION RULES:
-- If query mentions "Portugal", ONLY include records from Portugal - EXCLUDE Ukraine, Italy, UK, etc.
+- If query mentions "Italian", include "Italy, Turin", "Italy, Milan", etc.
+- If query mentions "French", include "France, Paris", "France, Lyon", etc.
+- If query mentions "Portuguese", include "Portugal, Lisbon", "Portugal, Porto", etc.
 - If query mentions "July", ONLY include records from July - EXCLUDE other months
 - If query mentions LinkedIn, ONLY include records with actual LinkedIn URLs/data - EXCLUDE empty LinkedIn fields
-- If query mentions email, ONLY include records with actual email addresses - EXCLUDE empty email fields
-- If query mentions phone, ONLY include records with actual phone numbers - EXCLUDE empty phone fields
+- If query mentions "name contains M", ONLY include records where name has "M"
+- If query mentions "direct email", EXCLUDE generic emails like info@, contact@, hello@, etc.
 
 EXCLUSION EXAMPLES:
-- Query "Portugal events in July" → EXCLUDE Ukraine events, EXCLUDE August events, EXCLUDE Italian events
-- Query "Portugal events in July with LinkedIn" → EXCLUDE Ukraine events, EXCLUDE July events without LinkedIn, EXCLUDE Portugal events in other months
+- Query "Italian events" → INCLUDE "Italy, Turin", "Italy, Milan" - EXCLUDE other countries
+- Query "French contacts with name containing M" → INCLUDE French records with "M" in name - EXCLUDE non-French, EXCLUDE names without "M"
+- Query "Portuguese festivals in July with LinkedIn" → INCLUDE Portugal festivals in July WITH LinkedIn - EXCLUDE other countries, EXCLUDE other months, EXCLUDE records without LinkedIn
 
 Return ONLY a JSON array of records that match ALL conditions.
 If no records match ALL conditions, return an empty array [].
