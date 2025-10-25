@@ -46,36 +46,59 @@ class DataStructureAnalyzer:
             # Convert ALL data to JSON for GPT
             all_data = df.to_dict('records')
             
-            # SIMPLIFIED SYSTEM PROMPT
+            # ENHANCED SYSTEM PROMPT FOR STRICT FILTERING
             system_prompt = """You are a data filtering expert. I will give you:
 1. ALL the data from a database/spreadsheet
 2. A user query
 
-Your job: Return ONLY records that match ALL conditions in the user query.
+CRITICAL: You must FILTER the data and return ONLY records that match the user query.
 
-IMPORTANT RULES:
-- "Italian" matches "Italy", "Italy, Turin", "Italy, Milan"
-- "French" matches "France", "France, Paris", "France, Lyon"  
-- "Portuguese" matches "Portugal", "Portugal, Lisbon", "Portugal, Porto"
-- "Irish" matches "Ireland", "Ireland, Dublin", "Ireland, Cork"
-- If query mentions LinkedIn, record must have actual LinkedIn data (not empty)
-- If query mentions "name contains M", record must have "M" in the name
-- If query mentions "direct email", exclude generic emails like info@, contact@
+FILTERING RULES - BE VERY STRICT:
+- "Irish" means ONLY records where Country field contains "Ireland" or "Irish"
+- "Italian" means ONLY records where Country field contains "Italy" or "Italian"  
+- "French" means ONLY records where Country field contains "France" or "French"
+- "Portuguese" means ONLY records where Country field contains "Portugal" or "Portuguese"
+- "German" means ONLY records where Country field contains "Germany" or "German"
+- "Spanish" means ONLY records where Country field contains "Spain" or "Spanish"
+- "British" means ONLY records where Country field contains "UK", "United Kingdom", "England", "Scotland", "Wales"
 
-Return ONLY a JSON array of matching records. If no matches, return empty array [].
+STRICT FILTERING EXAMPLES:
+- Query "give me a list of all irish" → ONLY return records where Country = "Ireland" or contains "Irish"
+- Query "Italian events" → ONLY return records where Country = "Italy" or contains "Italian"
+- Query "French contacts" → ONLY return records where Country = "France" or contains "French"
 
-Example:
+IMPORTANT: 
+- Do NOT return records with empty Country fields
+- Do NOT return records with "?" in Country field
+- Do NOT return records that don't match the country criteria
+- If no records match, return empty array []
+
+Return ONLY a JSON array of records that match the country criteria. If no matches, return empty array [].
+
+Example for "Irish" query:
 [
-  {"Name": "John Smith", "Country": "Italy, Turin", "Event": "Festival", "Month": "July", "LinkedIn": "linkedin.com/in/johnsmith"}
+  {"Name": "John Smith", "Country": "Ireland", "Email": "john@email.com"},
+  {"Name": "Jane Doe", "Country": "Ireland, Dublin", "Email": "jane@email.com"}
 ]"""
 
-            # SIMPLIFIED USER PROMPT
+            # ENHANCED USER PROMPT FOR STRICT FILTERING
             user_prompt = f"""DATA:
 {json.dumps(all_data, indent=2)}
 
 QUERY: "{user_query}"
 
-Find records that match ALL conditions in the query. Return ONLY the JSON array."""
+TASK: Filter the data and return ONLY records that match the query.
+
+FILTERING INSTRUCTIONS:
+- Look at the Country field in each record
+- If query mentions "Irish", ONLY include records where Country contains "Ireland" or "Irish"
+- If query mentions "Italian", ONLY include records where Country contains "Italy" or "Italian"
+- If query mentions "French", ONLY include records where Country contains "France" or "French"
+- EXCLUDE records with empty Country fields
+- EXCLUDE records with "?" in Country field
+- EXCLUDE records that don't match the country criteria
+
+Return ONLY the JSON array of matching records. If no matches, return empty array []."""
 
             print("=" * 80)
             print("SYSTEM PROMPT:")
@@ -84,10 +107,10 @@ Find records that match ALL conditions in the query. Return ONLY the JSON array.
             print("USER PROMPT:")
             print(user_prompt)
             print("=" * 80)
-            print("SENDING TO GPT-5...")
+            print("SENDING TO GPT-5 PRO...")
             
             response = self.client.chat.completions.create(
-                model="gpt-5",
+                model="gpt-5-pro",  # Upgraded to GPT-5 Pro
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
