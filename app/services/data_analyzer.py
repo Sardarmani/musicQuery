@@ -183,7 +183,7 @@ Example response format:
 ]"""
 
             user_prompt = f"""ALL DATA FROM THE DATABASE:
-{json.dumps(all_data, indent=2)}
+{json.dumps(all_data, indent=6)}
 
 USER QUERY: "{user_query}"
 
@@ -221,10 +221,6 @@ STRICT VALIDATION RULES:
 - If query mentions "name contains M", ONLY include records where name has "M"
 - If query mentions "direct email", EXCLUDE generic emails like info@, contact@, hello@, etc.
 
-EXCLUSION EXAMPLES:
-- Query "Italian events" → INCLUDE "Italy, Turin", "Italy, Milan" - EXCLUDE other countries
-- Query "French contacts with name containing M" → INCLUDE French records with "M" in name - EXCLUDE non-French, EXCLUDE names without "M"
-- Query "Portuguese festivals in July with LinkedIn" → INCLUDE Portugal festivals in July WITH LinkedIn - EXCLUDE other countries, EXCLUDE other months, EXCLUDE records without LinkedIn
 
 Return ONLY a JSON array of records that match ALL conditions.
 If no records match ALL conditions, return an empty array [].
@@ -232,7 +228,7 @@ If no records match ALL conditions, return an empty array [].
 Return ONLY the JSON array, no other text."""
 
             response = self.client.chat.completions.create(
-                model="gpt-5",  # Using GPT-5 as requested
+                model="gpt-5-pro",  # Using GPT-5 as requested
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
